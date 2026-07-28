@@ -543,18 +543,30 @@ var app = {
     return JSON.stringify([{ subscription: this.state.pushSub, prefs: this.pushPrefs() }], null, 2);
   },
 
+  /* Getting this off the phone and into a repo secret is the awkward bit, so
+     offer the share sheet first — that is what makes it a two-tap job. */
   copyDeviceCode: function () {
     var code = app.deviceCode();
     if (!code) { app.toastMsg('Turn reminders on first.'); return; }
-    var fallback = function () {
+
+    var toFile = function () {
       download(code, 'one-minute-device.json', 'application/json');
-      app.toastMsg('Saved as a file — paste its contents into the secret.');
+      app.toastMsg('Saved as a file.');
     };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(code).then(function () {
-        app.toastMsg('Device code copied.');
-      }, fallback);
-    } else fallback();
+    var toClipboard = function () {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(code).then(function () { app.toastMsg('Device code copied.'); }, toFile);
+      }
+      toFile();
+    };
+
+    if (navigator.share) {
+      navigator.share({ title: APP_NAME + ' device code', text: code })
+        .then(function () { app.toastMsg('Sent.'); })
+        .catch(function (e) { if (!e || e.name !== 'AbortError') toClipboard(); });
+      return;
+    }
+    toClipboard();
   },
 
   syncPush: function (sub) {
@@ -1025,6 +1037,7 @@ var app = {
       notifOn: s.notif, notifSub: notifSub, notifNote: notifNote,
       showDeviceCode: PUSH_MODE === 'manual' && s.notif && s.perm === 'granted',
       deviceRegistered: !!s.pushSub,
+      shareLabel: navigator.share ? 'Send code' : 'Copy code',
       copyDeviceCode: this.copyDeviceCode,
       toggleNotif: this.toggleNotif,
       notifTrack: this.track(s.notif), notifKnob: this.knob(s.notif),
@@ -1368,11 +1381,12 @@ function screenSettings(v) {
             h('button', {
               onClick: v.copyDeviceCode,
               style: 'flex:none;padding:9px 15px;border-radius:var(--rp);border:1px solid var(--line);font-size:14px;font-weight:600;color:' + (v.deviceRegistered ? 'var(--accent)' : 'var(--fg3)')
-            }, 'Copy code')
+            }, v.shareLabel)
           ),
           h('div', { style: 'padding:0 16px 15px;font-size:13px;color:var(--fg3);line-height:1.5' },
-            'Paste this code into the ', h('span', { style: 'font-family:var(--fm);color:var(--fg2)' }, 'PUSH_SUBSCRIPTIONS'),
-            ' secret in the repo once, and reminders arrive with the app closed. Copy it again if you change the times below.')
+            'One-time setup: send this code to yourself, then save it as the ',
+            h('span', { style: 'font-family:var(--fm);color:var(--fg2)' }, 'PUSH_SUBSCRIPTIONS'),
+            ' secret in the repo. After that, reminders arrive even with ' + APP_NAME + ' closed. Send it again if you change the times below.')
         ) : null,
         v.notifOn ? h('div', { key: 'opts' },
           h('div', { style: HR }),
