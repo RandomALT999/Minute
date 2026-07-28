@@ -1,12 +1,13 @@
-# Minute
+# One Minute
 
 Max reps in 60 seconds. Pick push-ups, pull-ups or sit-ups, hit start, get a 3-second countdown
 and a one-minute timer, then log the reps. The app keeps your log, your streak and your trend line.
 
 Built from the [Claude Design prototype](design-source/Minute.dc.html) as a static, installable
-PWA. No build step, no dependencies, no server — it runs entirely on the device.
+PWA. No build step, no dependencies, no framework — it runs entirely on the device, with a
+GitHub Actions cron as the one moving part off it, so reminders arrive with the app closed.
 
-**Live:** https://randomalt999.github.io/Minute/
+**Live:** https://randomalt999.github.io/One-Minute/
 
 ## Install it on your phone
 
@@ -43,8 +44,10 @@ Then open http://localhost:8123. A plain file:// open will not work — service 
 | `index.html` | Document head, theme CSS variables, keyframes |
 | `app.js` | Micro-vdom, app state, timer, stats, and the whole view tree |
 | `sw.js` | Precached shell, offline assets, push and notification handlers |
+| `config.js` | VAPID public key and optional push endpoint |
 | `manifest*.webmanifest` | One per app icon; the picker swaps the `<link>` |
 | `icons/` | Generated PNGs, 180/192/512 plus a 512 maskable per design |
+| `server/` | The reminder scheduler that runs on GitHub Actions |
 | `design-source/` | The original Claude Design export this was built from |
 
 Deployed straight from `main` by GitHub Pages. Push and it's live.
@@ -67,8 +70,14 @@ everything that does not need a server is done, and everything that does is not.
 - **§7 permission flow** — the Settings toggle calls `Notification.requestPermission()` straight
   off the tap, handles `denied` by showing the toggle as blocked with a note, and stays off by
   default. `sw.js` has working `push` and `notificationclick` handlers.
-- **§7 scheduler, client half** — interval and scheduled modes both resolve in local time, cap at
-  one nudge per window, and skip the nudge if a set was already logged in it.
+- **§7 Web Push, end to end** — a VAPID keypair, a real `pushManager.subscribe`, and a scheduler
+  in [`server/`](server/README.md) that runs on GitHub Actions cron and sends the nudge. This is
+  the piece that makes reminders arrive **with the app closed**, which on iOS is the only thing
+  that works at all. Set up in [server/README.md](server/README.md) — one paste of a device code.
+  Caveat worth knowing: Actions cron is best-effort, so a nudge can land 5–20 minutes late.
+- **§7 scheduler rules** — interval and scheduled modes both resolve in the device's own
+  timezone (DST-correct), and cap at one nudge per window. The in-app engine additionally skips
+  a nudge if a set was already logged in that window.
 - **§8 timer reliability** — `visibilitychange` reconciles from the absolute `countAt` / `runAt`
   timestamps and jumps straight to the rep sheet if the minute elapsed while hidden;
   `AudioContext` resumes on the way back; a local notification fires if the minute ends while
@@ -80,8 +89,11 @@ everything that does not need a server is done, and everything that does is not.
 
 - **§2 auth**, **§3 server data model**, **§4–§6 the APIs**. `localStorage` is the source of
   truth; export/import covers device migration instead.
-- **§7 real Web Push.** A VAPID keypair and a scheduler worker are the missing half — a static
-  host cannot hold a private key or run cron. Reminders therefore only fire while the app is
-  open or recently used. The client is ready: add a push server and it subscribes.
+- **§7 subscription storage.** Actions has no database, so a device is registered by pasting its
+  code into a repo secret once, rather than by POSTing to `/push/subscribe`. The client already
+  speaks the real protocol — set `endpoint` in `config.js` and it POSTs subscriptions to a proper
+  server instead, no other change needed.
+- **§7 "skip if already trained"** server-side. The scheduler cannot see your log, so it nudges
+  on schedule regardless. The in-app engine does honour it.
 - **§9 offline outbox.** There is nothing to sync to, so writes go straight to `localStorage`.
 - **§10 rate limiting**, **HealthKit** — server-side and native respectively.

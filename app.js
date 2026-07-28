@@ -152,8 +152,14 @@ var HAS_NOTIF = typeof Notification !== 'undefined' && 'serviceWorker' in naviga
    the app falls back to the foreground reminder engine, which can only fire
    while the app is running. Real delivery to a closed app needs the server. */
 var PUSH = window.MINUTE_PUSH || {};
-var PUSH_ON = !!(PUSH.endpoint && PUSH.vapidPublicKey);
-var PUSH_API = PUSH_ON ? String(PUSH.endpoint).replace(/\/+$/, '') : '';
+var PUSH_KEY = PUSH.vapidPublicKey || '';
+var PUSH_API = PUSH.endpoint ? String(PUSH.endpoint).replace(/\/+$/, '') : '';
+/* 'server'  a live endpoint stores the subscription for us
+   'manual'  no endpoint: the device shows a code to paste into a GitHub
+             Actions secret once, and the cron there does the sending
+   'off'     no key at all — foreground reminders only */
+var PUSH_MODE = PUSH_API && PUSH_KEY ? 'server' : (PUSH_KEY ? 'manual' : 'off');
+var PUSH_ON = PUSH_MODE !== 'off';
 
 function urlB64ToUint8Array(b64) {
   var pad = new Array((4 - b64.length % 4) % 4 + 1).join('=');
@@ -231,7 +237,8 @@ var app = {
     canInstall: false,
     updateReady: false,
     pushLive: false,
-    pushErr: null
+    pushErr: null,
+    pushSub: null
   },
 
   setState: function (patch, cb) {
@@ -515,14 +522,39 @@ var app = {
       if (sub) return sub;
       return app.swReg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlB64ToUint8Array(PUSH.vapidPublicKey)
+        applicationServerKey: urlB64ToUint8Array(PUSH_KEY)
       });
     }).then(function (sub) {
+      if (PUSH_MODE === 'manual') {
+        app.setState({ pushSub: sub ? sub.toJSON() : null, pushErr: null });
+        return !!sub;
+      }
       return app.syncPush(sub);
     }).catch(function (e) {
-      app.setState({ pushLive: false, pushErr: String((e && e.message) || e) });
+      app.setState({ pushLive: false, pushSub: null, pushErr: String((e && e.message) || e) });
       return false;
     });
+  },
+
+  /* The blob that goes into the PUSH_SUBSCRIPTIONS secret: who to push to,
+     plus the schedule to push on. Re-copy it after changing reminder times. */
+  deviceCode: function () {
+    if (!this.state.pushSub) return '';
+    return JSON.stringify([{ subscription: this.state.pushSub, prefs: this.pushPrefs() }], null, 2);
+  },
+
+  copyDeviceCode: function () {
+    var code = app.deviceCode();
+    if (!code) { app.toastMsg('Turn reminders on first.'); return; }
+    var fallback = function () {
+      download(code, 'one-minute-device.json', 'application/json');
+      app.toastMsg('Saved as a file — paste its contents into the secret.');
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(code).then(function () {
+        app.toastMsg('Device code copied.');
+      }, fallback);
+    } else fallback();
   },
 
   syncPush: function (sub) {
@@ -561,7 +593,11 @@ var app = {
 
   toggleNotif: function () {
     var s = app.state;
-    if (s.notif) { app.set({ notif: false }, function () { app.unsubscribePush(); }); return; }
+    if (s.notif) {
+      app.setState({ pushSub: null });
+      app.set({ notif: false }, function () { app.unsubscribePush(); });
+      return;
+    }
     if (!HAS_NOTIF) { app.toastMsg('This browser has no notification support.'); return; }
     if (Notification.permission === 'denied') {
       app.setState({ perm: 'denied' });
@@ -888,6 +924,11 @@ var app = {
       } else if (s.pushLive) {
         notifSub = 'On — arrives with the app closed';
         notifNote = 'Reminders are sent by the push server, so they reach you whether or not ' + APP_NAME + ' is open.';
+      } else if (PUSH_MODE === 'manual') {
+        notifSub = s.pushSub ? 'On — this device is registered' : 'On — registering…';
+        notifNote = s.pushErr
+          ? 'This browser refused to register for push (' + s.pushErr + '). Nudges will only fire while ' + APP_NAME + ' is open.'
+          : null;
       } else if (PUSH_ON) {
         notifSub = 'On — connecting';
         notifNote = 'Reaching the push server' + (s.pushErr ? ' failed (' + s.pushErr + ').' : '…') +
@@ -982,6 +1023,9 @@ var app = {
       },
 
       notifOn: s.notif, notifSub: notifSub, notifNote: notifNote,
+      showDeviceCode: PUSH_MODE === 'manual' && s.notif && s.perm === 'granted',
+      deviceRegistered: !!s.pushSub,
+      copyDeviceCode: this.copyDeviceCode,
       toggleNotif: this.toggleNotif,
       notifTrack: this.track(s.notif), notifKnob: this.knob(s.notif),
       notifModes: [{ id: 'interval', label: 'Interval' }, { id: 'scheduled', label: 'Scheduled' }].map(function (m) {
@@ -1312,6 +1356,23 @@ function screenSettings(v) {
         v.notifNote ? h('div', { key: 'note' },
           h('div', { style: HR }),
           h('div', { style: 'padding:13px 16px;font-size:13px;color:var(--fg3);line-height:1.5' }, v.notifNote)
+        ) : null,
+        v.showDeviceCode ? h('div', { key: 'devcode' },
+          h('div', { style: HR }),
+          h('div', { style: 'display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 16px' },
+            h('div', { style: 'min-width:0' },
+              h('div', { style: 'font-size:15px' }, 'Background delivery'),
+              h('div', { style: 'font-size:13.5px;color:var(--fg3);margin-top:2px' },
+                v.deviceRegistered ? 'This device is registered' : 'Waiting for the browser…')
+            ),
+            h('button', {
+              onClick: v.copyDeviceCode,
+              style: 'flex:none;padding:9px 15px;border-radius:var(--rp);border:1px solid var(--line);font-size:14px;font-weight:600;color:' + (v.deviceRegistered ? 'var(--accent)' : 'var(--fg3)')
+            }, 'Copy code')
+          ),
+          h('div', { style: 'padding:0 16px 15px;font-size:13px;color:var(--fg3);line-height:1.5' },
+            'Paste this code into the ', h('span', { style: 'font-family:var(--fm);color:var(--fg2)' }, 'PUSH_SUBSCRIPTIONS'),
+            ' secret in the repo once, and reminders arrive with the app closed. Copy it again if you change the times below.')
         ) : null,
         v.notifOn ? h('div', { key: 'opts' },
           h('div', { style: HR }),
