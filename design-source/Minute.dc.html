@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Minute">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0A0A0B">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Figtree:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0A0A0B;--surf:#141416;--surf2:#1E1E21;--line:rgba(255,255,255,0.09);--fg:#F7F7F5;--fg2:rgba(247,247,245,0.60);--fg3:rgba(247,247,245,0.56);--accent:#FF7A29;--accent-ink:#170A00;--r:20px;--rb:16px;--rp:999px;--fu:'Barlow',-apple-system,system-ui,sans-serif;--fn:'Barlow Condensed','Barlow',sans-serif;--fm:'IBM Plex Mono',ui-monospace,monospace}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;overscroll-behavior:none;background:var(--bg)}
+body{font-family:var(--fu);color:var(--fg);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+a{color:var(--accent);text-decoration:none}
+a:hover{opacity:.7}
+::-webkit-scrollbar{width:0;height:0}
+*{scrollbar-width:none}
+@keyframes wtRise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@keyframes wtSheet{from{transform:translateY(100%)}to{transform:none}}
+@keyframes wtFade{from{opacity:0}to{opacity:1}}
+@keyframes wtHalo{0%{transform:scale(.86);opacity:.5}70%{transform:scale(1.18);opacity:0}100%{opacity:0}}
+@keyframes wtToast{0%{opacity:0;transform:translateY(10px)}12%{opacity:1;transform:none}84%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-6px)}}
+</style>
+</helmet>
+
+<div style="position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg);color:var(--fg);font-family:var(--fu);overflow:hidden">
+
+<sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+<div data-screen-label="Home" style="flex:1;min-height:0;display:flex;flex-direction:column;padding:calc(env(safe-area-inset-top) + 16px) 20px 0;animation:wtFade .22s ease">
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+    <div style="font-family:var(--fm);font-size:12.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--fg2)">Minute</div>
+    <div style="font-family:var(--fm);font-size:12.5px;letter-spacing:.08em;color:var(--fg3)">{{ streakLabel }}</div>
+  </div>
+
+  <div style="display:flex;gap:4px;padding:4px;background:var(--surf);border:1px solid var(--line);border-radius:var(--rp)">
+    <sc-for list="{{ exOpts }}" as="o" hint-placeholder-count="3">
+      <button onClick="{{ o.pick }}" style="{{ o.segSt }}">{{ o.label }}</button>
+    </sc-for>
+  </div>
+
+
+  <div style="flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;position:relative;padding:12px 0">
+    <div style="position:relative;height:min(100%,286px);max-width:74vw;aspect-ratio:1;flex:0 1 auto;min-height:0">
+      <svg viewBox="0 0 260 260" style="width:100%;height:100%;transform:rotate(-90deg);overflow:visible">
+        <circle cx="130" cy="130" r="118" fill="none" stroke="var(--surf2)" stroke-width="7"></circle>
+        <circle cx="130" cy="130" r="118" fill="none" stroke="var(--accent)" stroke-width="7" stroke-linecap="round" stroke-dasharray="741.4" stroke-dashoffset="{{ ringOffset }}" style="transition:stroke-dashoffset .18s linear"></circle>
+      </svg>
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+        <div style="font-family:var(--fn);font-size:clamp(42px,19vh,76px);font-weight:600;line-height:.92;letter-spacing:-.02em;font-variant-numeric:tabular-nums">{{ clock }}</div>
+        <div style="font-family:var(--fm);font-size:11.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--fg3);margin-top:10px">{{ phaseLabel }}</div>
+      </div>
+    </div>
+    <div style="font-family:var(--fm);font-size:12.5px;letter-spacing:.1em;color:var(--fg3);text-transform:uppercase;text-align:center;flex:none;white-space:nowrap">{{ exSubLabel }}</div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px;padding-bottom:16px">
+    <sc-if value="{{ idle }}" hint-placeholder-val="{{ true }}">
+      <button onClick="{{ start }}" style="height:62px;border-radius:var(--rp);background:var(--accent);color:var(--accent-ink);font-size:16px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-family:var(--fu)">Start the minute</button>
+    </sc-if>
+    <sc-if value="{{ running }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ cancel }}" style="height:62px;border-radius:var(--rp);border:1.5px solid var(--line);color:var(--fg2);font-size:16px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;background:var(--surf)">Cancel</button>
+    </sc-if>
+    <div style="display:flex;gap:10px">
+      <div style="flex:1;background:var(--surf);border:1px solid var(--line);border-radius:var(--rb);padding:13px 15px">
+        <div style="font-family:var(--fm);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--fg3)">Last set</div>
+        <div style="display:flex;align-items:baseline;gap:7px;margin-top:5px">
+          <span style="font-family:var(--fn);font-size:27px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums">{{ lastReps }}</span>
+          <span style="font-size:13px;color:var(--fg2)">{{ lastWhen }}</span>
+        </div>
+      </div>
+      <div style="flex:1;background:var(--surf);border:1px solid var(--line);border-radius:var(--rb);padding:13px 15px">
+        <div style="font-family:var(--fm);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--fg3)">Personal best</div>
+        <div style="display:flex;align-items:baseline;gap:7px;margin-top:5px">
+          <span style="font-family:var(--fn);font-size:27px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums">{{ bestReps }}</span>
+          <span style="font-size:13px;color:var(--fg2)">{{ bestWhen }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isLog }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Log" style="flex:1;min-height:0;display:flex;flex-direction:column;animation:wtFade .22s ease">
+  <div style="padding:calc(env(safe-area-inset-top) + 16px) 20px 14px;display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--line)">
+    <div>
+      <div style="font-family:var(--fn);font-size:32px;font-weight:600;line-height:1;letter-spacing:-.01em">Log</div>
+      <div style="font-family:var(--fm);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg3);margin-top:7px;white-space:nowrap">{{ logSummary }}</div>
+    </div>
+    <button onClick="{{ exNext }}" style="padding:8px 14px;border-radius:var(--rp);background:color-mix(in oklab, var(--accent) 16%, transparent);color:var(--accent);font-family:var(--fm);font-size:12.5px;letter-spacing:.08em;text-transform:uppercase">{{ exLabel }}</button>
+  </div>
+  <div style="flex:1;min-height:0;overflow-y:auto;padding:0 20px 24px">
+    <sc-for list="{{ logGroups }}" as="g" hint-placeholder-count="2">
+      <div>
+        <div style="font-family:var(--fn);font-size:14px;font-weight:600;letter-spacing:.2em;color:var(--fg3);padding:22px 0 6px">{{ g.year }}</div>
+        <sc-for list="{{ g.months }}" as="m" hint-placeholder-count="2">
+          <div style="margin-bottom:16px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;padding:10px 0 9px;border-bottom:1px solid var(--line)">
+              <div style="font-size:15px;font-weight:600;letter-spacing:-.005em">{{ m.label }}</div>
+              <div style="font-family:var(--fm);font-size:12.5px;color:var(--fg2);letter-spacing:.02em">{{ m.meta }}</div>
+            </div>
+            <sc-for list="{{ m.rows }}" as="s" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line)">
+                <div style="display:flex;align-items:baseline;gap:10px">
+                  <span style="font-family:var(--fm);font-size:14px;color:var(--fg);min-width:52px">{{ s.day }}</span>
+                  <span style="font-family:var(--fm);font-size:12.5px;color:var(--fg3)">{{ s.pace }}</span>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:5px">
+                  <span style="font-family:var(--fn);font-size:22px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums">{{ s.reps }}</span>
+                  <span style="font-size:12.5px;color:var(--fg3)">reps</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+    <sc-if value="{{ logEmpty }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:64px 8px;text-align:center">
+        <div style="font-family:var(--fn);font-size:22px;font-weight:600;color:var(--fg2)">Nothing logged yet</div>
+        <div style="font-size:14.5px;color:var(--fg3);margin-top:8px;line-height:1.5">One minute is all it takes. Head to Train<br>and hit start.</div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isStats }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Stats" style="flex:1;min-height:0;display:flex;flex-direction:column;animation:wtFade .22s ease">
+  <div style="padding:calc(env(safe-area-inset-top) + 16px) 20px 14px;display:flex;align-items:flex-end;justify-content:space-between">
+    <div style="font-family:var(--fn);font-size:32px;font-weight:600;line-height:1;letter-spacing:-.01em">Stats</div>
+    <button onClick="{{ exNext }}" style="padding:8px 14px;border-radius:var(--rp);background:color-mix(in oklab, var(--accent) 16%, transparent);color:var(--accent);font-family:var(--fm);font-size:12.5px;letter-spacing:.08em;text-transform:uppercase">{{ exLabel }}</button>
+  </div>
+
+  <div style="flex:1;min-height:0;overflow-y:auto;padding:0 20px 24px">
+    <div style="display:flex;gap:4px;padding:4px;background:var(--surf);border:1px solid var(--line);border-radius:var(--rp);margin-bottom:22px">
+      <sc-for list="{{ ranges }}" as="r" hint-placeholder-count="4">
+        <button onClick="{{ r.pick }}" style="{{ r.st }}">{{ r.label }}</button>
+      </sc-for>
+    </div>
+
+    <div style="text-align:center;padding:4px 0 22px">
+      <div style="font-family:var(--fn);font-size:78px;font-weight:600;line-height:.9;letter-spacing:-.03em;font-variant-numeric:tabular-nums">{{ lifetime }}</div>
+      <div style="font-family:var(--fm);font-size:11.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--fg3);margin-top:12px">Lifetime {{ exLower }}</div>
+      <div style="display:inline-block;margin-top:14px;padding:7px 14px;border-radius:var(--rp);background:color-mix(in oklab, var(--accent) 15%, transparent);color:var(--accent);font-size:13.5px;font-weight:600">{{ rangeDelta }}</div>
+    </div>
+
+    <div style="background:var(--surf);border:1px solid var(--line);border-radius:var(--r);padding:16px 16px 10px;margin-bottom:14px">
+    <sc-if value="{{ hasChart }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px">
+        <div style="font-family:var(--fm);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--fg3)">{{ scrubDate }}</div>
+        <div style="display:flex;align-items:baseline;gap:5px">
+          <span style="font-family:var(--fn);font-size:26px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums">{{ scrubReps }}</span>
+          <span style="font-size:12.5px;color:var(--fg3)">reps</span>
+        </div>
+      </div>
+      <div onPointerDown="{{ chartDown }}" onPointerMove="{{ chartMove }}" onPointerUp="{{ chartUp }}" onPointerLeave="{{ chartUp }}" style="position:relative;touch-action:none;cursor:ew-resize;user-select:none;margin:0 -4px">
+        <svg viewBox="0 0 320 132" preserveAspectRatio="none" style="width:100%;height:132px;display:block;overflow:visible">
+          <path d="{{ chartArea }}" fill="var(--accent)" opacity="0.1"></path>
+          <path d="{{ chartLine }}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>
+          <line x1="{{ scrubX }}" y1="4" x2="{{ scrubX }}" y2="126" stroke="var(--fg3)" stroke-width="1" vector-effect="non-scaling-stroke"></line>
+        </svg>
+        <div style="{{ dotSt }}"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-family:var(--fm);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg3);padding:6px 0 4px">
+        <span>{{ chartFrom }}</span>
+        <span>Drag to scrub</span>
+        <span>{{ chartTo }}</span>
+      </div>
+    </sc-if>
+    <sc-if value="{{ noChart }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:26px 4px 30px;text-align:center">
+        <div style="font-family:var(--fm);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--fg3)">Trend</div>
+        <div style="font-size:14.5px;color:var(--fg2);margin-top:11px;line-height:1.5">{{ chartEmpty }}</div>
+      </div>
+    </sc-if>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <sc-for list="{{ statCards }}" as="c" hint-placeholder-count="4">
+        <div style="background:var(--surf);border:1px solid var(--line);border-radius:var(--rb);padding:15px 15px 16px">
+          <div style="font-family:var(--fm);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg3);line-height:1.4">{{ c.k }}</div>
+          <div style="font-family:var(--fn);font-size:31px;font-weight:600;line-height:1.05;margin-top:9px;letter-spacing:-.015em;font-variant-numeric:tabular-nums">{{ c.v }}</div>
+          <div style="font-size:13px;color:var(--fg2);margin-top:4px">{{ c.sub }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="margin-top:14px;padding:16px 18px;border:1px solid var(--line);border-radius:var(--r);background:color-mix(in oklab, var(--accent) 8%, transparent)">
+      <div style="font-size:14.5px;line-height:1.5;color:var(--fg)">{{ statsNote }}</div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isSet }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Settings" style="flex:1;min-height:0;display:flex;flex-direction:column;animation:wtFade .22s ease">
+  <div style="padding:calc(env(safe-area-inset-top) + 16px) 20px 14px">
+    <div style="font-family:var(--fn);font-size:32px;font-weight:600;line-height:1;letter-spacing:-.01em">Settings</div>
+  </div>
+  <div style="flex:1;min-height:0;overflow-y:auto;padding:0 20px 28px">
+
+    <div style="font-family:var(--fm);font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--fg3);padding:14px 2px 9px">Appearance</div>
+    <div style="background:var(--surf);border:1px solid var(--line);border-radius:var(--r);overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 16px">
+        <div style="font-size:15px">Theme</div>
+        <div style="display:flex;gap:3px;padding:3px;background:var(--surf2);border-radius:var(--rp)">
+          <sc-for list="{{ modes }}" as="m" hint-placeholder-count="2">
+            <button onClick="{{ m.pick }}" style="{{ m.st }}">{{ m.label }}</button>
+          </sc-for>
+        </div>
+      </div>
+      <div style="height:1px;background:var(--line)"></div>
+      <div style="padding:15px 16px">
+        <div style="font-size:15px;margin-bottom:13px">Accent color</div>
+        <div style="display:flex;gap:11px;flex-wrap:wrap">
+          <sc-for list="{{ accents }}" as="a" hint-placeholder-count="6">
+            <button onClick="{{ a.pick }}" style="{{ a.st }}"></button>
+          </sc-for>
+        </div>
+      </div>
+      <div style="height:1px;background:var(--line)"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 16px">
+        <div style="min-width:0">
+          <div style="font-size:15px">Visual style</div>
+          <div style="font-size:13.5px;color:var(--fg3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ themeName }}</div>
+        </div>
+        <button onClick="{{ cycleTheme }}" style="flex:none;padding:9px 15px;border-radius:var(--rp);border:1px solid var(--line);font-size:14px;font-weight:600;color:var(--fg2)">Switch</button>
+      </div>
+    </div>
+
+    <div style="font-family:var(--fm);font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--fg3);padding:26px 2px 9px">App icon</div>
+    <div style="background:var(--surf);border:1px solid var(--line);border-radius:var(--r);padding:17px 16px">
+      <div style="display:flex;gap:16px;justify-content:space-between">
+        <button onClick="{{ ico0 }}" style="{{ icoSt0 }}">
+          <div style="width:100%;height:100%;border-radius:16px;background:var(--accent);display:flex;align-items:center;justify-content:center">
+            <div style="width:32px;height:32px;border-radius:50%;border:4px solid var(--accent-ink)"></div>
+          </div>
+        </button>
+        <button onClick="{{ ico1 }}" style="{{ icoSt1 }}">
+          <div style="width:100%;height:100%;border-radius:16px;background:#0C0C0D;display:flex;align-items:flex-end;justify-content:center;gap:5px;padding:16px 0">
+            <div style="width:7px;height:14px;border-radius:3px;background:var(--accent)"></div>
+            <div style="width:7px;height:24px;border-radius:3px;background:var(--accent)"></div>
+            <div style="width:7px;height:32px;border-radius:3px;background:var(--accent)"></div>
+          </div>
+        </button>
+        <button onClick="{{ ico2 }}" style="{{ icoSt2 }}">
+          <div style="width:100%;height:100%;border-radius:16px;background:#F5F3EE;display:flex;align-items:center;justify-content:center">
+            <div style="width:26px;height:26px;background:var(--accent);transform:rotate(45deg);border-radius:5px"></div>
+          </div>
+        </button>
+        <button onClick="{{ ico3 }}" style="{{ icoSt3 }}">
+          <div style="width:100%;height:100%;border-radius:16px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--fn);font-size:34px;font-weight:700;color:var(--accent-ink);line-height:1">60</div>
+        </button>
+      </div>
+    </div>
+
+    <div style="font-family:var(--fm);font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--fg3);padding:26px 2px 9px">Reminders</div>
+    <div style="background:var(--surf);border:1px solid var(--line);border-radius:var(--r);overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 16px">
+        <div>
+          <div style="font-size:15px">Push notifications</div>
+          <div style="font-size:13.5px;color:var(--fg3);margin-top:2px">{{ notifSub }}</div>
+        </div>
+        <button onClick="{{ toggleNotif }}" style="{{ notifTrack }}"><div style="{{ notifKnob }}"></div></button>
+      </div>
+      <sc-if value="{{ notifOn }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="height:1px;background:var(--line)"></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 16px">
+            <div style="font-size:15px">Mode</div>
+            <div style="display:flex;gap:3px;padding:3px;background:var(--surf2);border-radius:var(--rp)">
+              <sc-for list="{{ notifModes }}" as="n" hint-placeholder-count="2">
+                <button onClick="{{ n.pick }}" style="{{ n.st }}">{{ n.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="height:1px;background:var(--line)"></div>
+          <sc-if value="{{ notifInterval }}" hint-placeholder-val="{{ true }}">
+            <div style="padding:15px 16px">
+              <div style="font-size:15px;margin-bottom:12px">Every {{ intervalLabel }}</div>
+              <div style="display:flex;gap:8px">
+                <sc-for list="{{ intervals }}" as="i" hint-placeholder-count="5">
+                  <button onClick="{{ i.pick }}" style="{{ i.st }}">{{ i.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ notifScheduled }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:15px 16px">
+              <div style="font-size:15px;margin-bottom:12px">At these times</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <sc-for list="{{ times }}" as="t" hint-placeholder-count="4">
+                  <button onClick="{{ t.remove }}" style="{{ t.st }}">{{ t.label }}<span style="color:var(--fg3);margin-left:7px">×</span></button>
+                </sc-for>
+              </div>
+              <div style="font-size:13px;color:var(--fg3);margin-top:10px">Tap a time to remove it.</div>
+              <div style="position:relative;margin-top:14px;border:1px solid var(--line);border-radius:var(--rb);overflow:hidden">
+                <div style="position:absolute;left:10px;right:10px;top:44px;height:44px;border-radius:10px;background:var(--surf2);pointer-events:none"></div>
+                <div style="position:relative;display:flex;height:132px;-webkit-mask-image:linear-gradient(180deg,transparent,#000 26%,#000 74%,transparent);mask-image:linear-gradient(180deg,transparent,#000 26%,#000 74%,transparent)">
+                  <div ref="{{ hRef }}" onScroll="{{ hScroll }}" style="{{ colSt }}">
+                    <sc-for list="{{ hoursCol }}" as="h" hint-placeholder-count="12">
+                      <div style="{{ h.st }}">{{ h.label }}</div>
+                    </sc-for>
+                  </div>
+                  <div ref="{{ mRef }}" onScroll="{{ mScroll }}" style="{{ colSt }}">
+                    <sc-for list="{{ minsCol }}" as="m2" hint-placeholder-count="12">
+                      <div style="{{ m2.st }}">{{ m2.label }}</div>
+                    </sc-for>
+                  </div>
+                  <div ref="{{ pRef }}" onScroll="{{ pScroll }}" style="{{ colSt }}">
+                    <sc-for list="{{ apCol }}" as="p" hint-placeholder-count="2">
+                      <div style="{{ p.st }}">{{ p.label }}</div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+              <button onClick="{{ addTime }}" style="{{ addSt }}">{{ addLabel }}</button>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+    </div>
+
+    <div style="font-family:var(--fm);font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--fg3);padding:26px 2px 9px">Data</div>
+    <div style="background:var(--surf);border:1px solid var(--line);border-radius:var(--r);overflow:hidden">
+      <button onClick="{{ clearAll }}" style="display:block;width:100%;text-align:left;padding:15px 16px;font-size:15px;color:#FF5A5A">Erase logged sets</button>
+    </div>
+
+    <div style="text-align:center;font-family:var(--fm);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg3);padding:26px 0 6px">Minute · v1.0 · add to home screen</div>
+  </div>
+</div>
+</sc-if>
+
+<div style="display:flex;border-top:1px solid var(--line);background:var(--surf);padding:9px 8px calc(env(safe-area-inset-bottom) + 9px)">
+  <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+    <button onClick="{{ t.pick }}" style="{{ t.st }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px;display:block"><path d="{{ t.d }}"></path></svg>
+      <span style="font-size:11.5px;font-weight:600;letter-spacing:.04em">{{ t.label }}</span>
+    </button>
+  </sc-for>
+</div>
+
+<sc-if value="{{ entering }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.55);backdrop-filter:blur(8px);display:flex;flex-direction:column;justify-content:flex-end;animation:wtFade .18s ease">
+    <div style="background:var(--bg);border-top:1px solid var(--line);border-radius:26px 26px 0 0;padding:22px 20px calc(env(safe-area-inset-bottom) + 18px);animation:wtSheet .3s cubic-bezier(.22,1,.36,1)">
+      <div style="width:38px;height:4px;border-radius:2px;background:var(--surf2);margin:0 auto 20px"></div>
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px">
+        <div>
+          <div style="font-family:var(--fm);font-size:11.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent)">{{ entryTitle }}</div>
+          <div style="font-size:14px;color:var(--fg2);margin-top:7px">{{ entryHint }}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-family:var(--fn);font-size:64px;font-weight:600;line-height:.85;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:{{ entryColor }}">{{ entryDisplay }}</div>
+          <div style="font-family:var(--fm);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--fg3);margin-top:8px">Reps</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px">
+        <sc-for list="{{ keys }}" as="k" hint-placeholder-count="12">
+          <button onClick="{{ k.press }}" style="height:58px;border-radius:var(--rb);background:var(--surf);border:1px solid var(--line);font-family:var(--fn);font-size:26px;font-weight:600;display:flex;align-items:center;justify-content:center">{{ k.label }}</button>
+        </sc-for>
+      </div>
+      <div style="display:flex;gap:9px;margin-top:12px">
+        <button onClick="{{ cancel }}" style="width:96px;height:56px;border-radius:var(--rp);border:1px solid var(--line);color:var(--fg2);font-size:14px;font-weight:600">Discard</button>
+        <button onClick="{{ saveSet }}" style="{{ saveSt }}">Save set</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ counting }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;animation:wtFade .16s ease">
+    <div style="position:relative;display:flex;align-items:center;justify-content:center;width:220px;height:220px">
+      <div style="position:absolute;inset:0;border-radius:50%;border:2px solid var(--accent);animation:wtHalo 1s ease-out infinite"></div>
+      <div style="font-family:var(--fn);font-size:130px;font-weight:600;line-height:1;color:var(--accent);font-variant-numeric:tabular-nums">{{ countVal }}</div>
+    </div>
+    <div style="font-family:var(--fm);font-size:12.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--fg3);margin-top:34px">Get in position</div>
+    <button onClick="{{ cancel }}" style="margin-top:40px;padding:12px 26px;border-radius:var(--rp);border:1px solid var(--line);color:var(--fg2);font-size:14px;letter-spacing:.06em">Cancel</button>
+  </div>
+</sc-if>
+
+<sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 82px);z-index:70;display:flex;justify-content:center;pointer-events:none">
+    <div style="max-width:86%;padding:12px 20px;border-radius:var(--rp);background:var(--accent);color:var(--accent-ink);font-size:14px;font-weight:700;letter-spacing:.01em;animation:wtToast 2.8s ease forwards;box-shadow:0 8px 28px rgba(0,0,0,.34)">{{ toast }}</div>
+  </div>
+</sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark-gym&quot;,&quot;swiss&quot;,&quot;soft&quot;,&quot;ink&quot;],&quot;default&quot;:&quot;dark-gym&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Look&quot;},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;options&quot;:[&quot;#FF7A29&quot;,&quot;#B7E23F&quot;,&quot;#4C9BFF&quot;,&quot;#B98CFF&quot;],&quot;default&quot;:&quot;#FF7A29&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Look&quot;},&quot;appearance&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Look&quot;}}">
+const STORE_KEY = 'wt.minute.v1';
+
+const EXS = [
+  { id:'push', label:'Push-ups', short:'Push', lower:'push-ups' },
+  { id:'pull', label:'Pull-ups', short:'Pull', lower:'pull-ups' },
+  { id:'situp', label:'Sit-ups', short:'Sit', lower:'sit-ups' }
+];
+
+const ACCENTS = [
+  { id:'orange', hex:'#FF7A29' }, { id:'lime', hex:'#B7E23F' }, { id:'blue', hex:'#4C9BFF' },
+  { id:'red', hex:'#FF5A5A' }, { id:'violet', hex:'#B98CFF' }, { id:'teal', hex:'#3ED6C0' }
+];
+
+const THEMES = {
+  'dark-gym': {
+    name:'Dark gym',
+    fu:"'Barlow',-apple-system,system-ui,sans-serif", fn:"'Barlow Condensed','Barlow',sans-serif", fm:"'IBM Plex Mono',ui-monospace,monospace",
+    r:'20px', rb:'16px', rp:'999px',
+    dark:{ bg:'#0A0A0B', surf:'#141416', surf2:'#1E1E21', line:'rgba(255,255,255,0.09)', fg:'#F7F7F5', fg2:'rgba(247,247,245,0.60)', fg3:'rgba(247,247,245,0.56)' },
+    light:{ bg:'#F3F3F1', surf:'#FFFFFF', surf2:'#EAEAE7', line:'rgba(0,0,0,0.09)', fg:'#111113', fg2:'rgba(17,17,19,0.62)', fg3:'rgba(17,17,19,0.56)' }
+  },
+  swiss: {
+    name:'Swiss',
+    fu:"'Helvetica Neue',Helvetica,Arial,sans-serif", fn:"'Helvetica Neue',Helvetica,Arial,sans-serif", fm:"'IBM Plex Mono',ui-monospace,monospace",
+    r:'3px', rb:'2px', rp:'2px',
+    dark:{ bg:'#0E0E0E', surf:'#161616', surf2:'#212121', line:'rgba(255,255,255,0.14)', fg:'#FAFAFA', fg2:'rgba(250,250,250,0.62)', fg3:'rgba(250,250,250,0.58)' },
+    light:{ bg:'#F0F0EE', surf:'#FFFFFF', surf2:'#E5E5E2', line:'rgba(0,0,0,0.16)', fg:'#0E0E0E', fg2:'rgba(14,14,14,0.64)', fg3:'rgba(14,14,14,0.58)' }
+  },
+  soft: {
+    name:'Soft neutral',
+    fu:"'Figtree',-apple-system,system-ui,sans-serif", fn:"'Figtree',-apple-system,system-ui,sans-serif", fm:"'IBM Plex Mono',ui-monospace,monospace",
+    r:'26px', rb:'20px', rp:'999px',
+    dark:{ bg:'#16151A', surf:'#211F27', surf2:'#2B2833', line:'rgba(255,255,255,0.07)', fg:'#F4F2F7', fg2:'rgba(244,242,247,0.60)', fg3:'rgba(244,242,247,0.56)' },
+    light:{ bg:'#F6F3EF', surf:'#FFFDFB', surf2:'#EEE9E2', line:'rgba(0,0,0,0.07)', fg:'#1A1720', fg2:'rgba(26,23,32,0.60)', fg3:'rgba(26,23,32,0.56)' }
+  },
+  ink: {
+    name:'Ink and paper',
+    fu:"'Helvetica Neue',Helvetica,Arial,sans-serif", fn:"'Instrument Serif',Georgia,serif", fm:"'IBM Plex Mono',ui-monospace,monospace",
+    r:'0px', rb:'0px', rp:'0px',
+    dark:{ bg:'#0E0D0C', surf:'#0E0D0C', surf2:'#1A1816', line:'rgba(243,239,231,0.18)', fg:'#F3EFE7', fg2:'rgba(243,239,231,0.62)', fg3:'rgba(243,239,231,0.58)' },
+    light:{ bg:'#FAF7F1', surf:'#FAF7F1', surf2:'#EFE9DE', line:'rgba(20,18,15,0.20)', fg:'#14120F', fg2:'rgba(20,18,15,0.64)', fg3:'rgba(20,18,15,0.58)' }
+  }
+};
+
+const THEME_IDS = ['dark-gym','swiss','soft','ink'];
+const RANGES = [{id:'week',label:'Week'},{id:'month',label:'Month'},{id:'year',label:'Year'},{id:'all',label:'All'}];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const RANGE_MS = { week:7*864e5, month:30*864e5, year:365*864e5, all:Infinity };
+
+function lum(hex) {
+  if (typeof hex !== 'string' || hex.charAt(0) !== '#' || hex.length < 7) return 0;
+  const n = parseInt(hex.slice(1), 16);
+  const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  return 0.2126 * f(n >> 16 & 255) + 0.7152 * f(n >> 8 & 255) + 0.0722 * f(n & 255);
+}
+
+class Component extends DCLogic {
+  state = {
+    page: 'home',
+    ex: 'push',
+    theme: THEME_IDS.includes(this.props.theme) ? this.props.theme : 'dark-gym',
+    mode: this.props.appearance === 'light' ? 'light' : 'dark',
+    accent: this.props.accent || '#FF7A29',
+    icon: 0,
+    notif: false,
+    notifMode: 'interval',
+    interval: 4,
+    times: ['07:00', '13:00', '20:00'],
+    dH: 6, dM: 6, dP: 0,
+    logged: [],
+    phase: 'idle',
+    countVal: 3,
+    remaining: 60,
+    entry: '',
+    elapsed: 60,
+    range: 'all',
+    scrub: null,
+    toast: null
+  };
+
+  componentDidMount() {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw) {
+        const d = JSON.parse(raw);
+        this.setState(s => ({
+          logged: Array.isArray(d.logged) ? d.logged : s.logged,
+          ex: d.ex || s.ex, accent: d.accent || s.accent, mode: d.mode || s.mode,
+          theme: d.theme || s.theme, icon: typeof d.icon === 'number' ? d.icon : s.icon,
+          notif: !!d.notif, notifMode: d.notifMode || s.notifMode,
+          interval: d.interval || s.interval,
+          times: Array.isArray(d.times) ? d.times : s.times
+        }), this.applyTheme);
+      }
+    } catch (e) {}
+    this.applyTheme();
+    this.timer = setInterval(() => this.tick(), 40);
+  }
+
+  componentWillUnmount() { clearInterval(this.timer); clearTimeout(this.toastT); }
+
+  persist() {
+    const s = this.state;
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        logged: s.logged, ex: s.ex, accent: s.accent, mode: s.mode, theme: s.theme,
+        icon: s.icon, notif: s.notif, notifMode: s.notifMode, interval: s.interval, times: s.times
+      }));
+    } catch (e) {}
+  }
+
+  set(patch, cb) { this.setState(patch, () => { this.persist(); if (cb) cb(); }); }
+
+  applyTheme() {
+    const st = this.state || {};
+    const accent = st.accent || '#FF7A29';
+    this._sig = st.theme + '|' + st.mode + '|' + accent;
+    const t = THEMES[st.theme] || THEMES['dark-gym'];
+    const p = t[st.mode] || t.dark;
+    const el = document.documentElement;
+    const la = lum(accent);
+    const cr = c => { const l = lum(c); const hi = Math.max(la, l), lo = Math.min(la, l); return (hi + 0.05) / (lo + 0.05); };
+    const ink = cr('#141210') >= cr('#FFFFFF') ? '#141210' : '#FFFFFF';
+    const vars = { bg:p.bg, surf:p.surf, surf2:p.surf2, line:p.line, fg:p.fg, fg2:p.fg2, fg3:p.fg3,
+      accent:accent, 'accent-ink':ink, r:t.r, rb:t.rb, rp:t.rp, fu:t.fu, fn:t.fn, fm:t.fm };
+    Object.keys(vars).forEach(k => el.style.setProperty('--' + k, vars[k]));
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', p.bg);
+    document.body.style.background = p.bg;
+  }
+
+  componentDidUpdate() {
+    const st = this.state || {};
+    if (st.theme + '|' + st.mode + '|' + st.accent !== this._sig) this.applyTheme();
+  }
+
+  sessions() {
+    const all = this.state.logged.slice();
+    return all.filter(s => s.ex === this.state.ex).sort((a, b) => a.ts - b.ts);
+  }
+
+  tick() {
+    const s = this.state;
+    if (s.phase === 'count') {
+      const left = Math.ceil((this.countAt - Date.now()) / 1000);
+      if (left <= 0) { this.runAt = Date.now() + 60000; this.setState({ phase: 'run', remaining: 60 }); this.blip(660, 0.12); }
+      else if (left !== s.countVal) { this.setState({ countVal: left }); this.blip(520, 0.07); }
+      return;
+    }
+    if (s.phase !== 'run') return;
+    const left = Math.max(0, (this.runAt - Date.now()) / 1000);
+    if (left <= 0) { this.setState({ phase: 'entry', remaining: 0, elapsed: 60, entry: '' }); this.alarm(); return; }
+    this.setState({ remaining: left });
+  }
+
+  ac() {
+    if (!this._ac) { const C = window.AudioContext || window.webkitAudioContext; if (C) this._ac = new C(); }
+    if (this._ac && this._ac.state === 'suspended') this._ac.resume();
+    return this._ac;
+  }
+
+  blip(freq, dur, when) {
+    const ac = this.ac(); if (!ac) return;
+    const t0 = ac.currentTime + (when || 0);
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.32, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
+    o.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0 + dur + 0.05);
+  }
+
+  alarm() {
+    [0, 0.26, 0.52].forEach(d => this.blip(880, 0.2, d));
+    this.blip(1320, 0.5, 0.78);
+    if (navigator.vibrate) navigator.vibrate([180, 90, 180, 90, 420]);
+  }
+
+  start = () => {
+    this.ac();
+    this.countAt = Date.now() + 3000;
+    this.setState({ phase: 'count', countVal: 3, remaining: 60 });
+    this.blip(520, 0.07);
+  };
+  cancel = () => this.setState({ phase: 'idle', remaining: 60, entry: '' });
+
+  saveSet = () => {
+    const reps = parseInt(this.state.entry, 10);
+    if (!reps) return;
+    const prev = this.sessions().slice(-1)[0];
+    const best = this.sessions().reduce((m, s) => Math.max(m, s.reps), 0);
+    const rec = { i: 'u' + Date.now(), ex: this.state.ex, ts: Date.now(), reps, dur: this.state.elapsed };
+    let msg;
+    if (reps > best) msg = 'New personal best — ' + reps + ' reps.';
+    else if (!prev) msg = 'First one logged. ' + reps + ' reps on the board.';
+    else if (reps > prev.reps) msg = 'Nice, +' + (reps - prev.reps) + ' on your last set.';
+    else if (reps === prev.reps) msg = 'Matched your last set. Consistent.';
+    else msg = 'Logged — ' + (best - reps) + ' off your best. Next one.';
+    this.set(s => ({ logged: s.logged.concat([rec]), phase: 'idle', entry: '', remaining: 60, toast: msg, scrub: null }));
+    clearTimeout(this.toastT);
+    this.toastT = setTimeout(() => this.setState({ toast: null }), 2800);
+  };
+
+  key = k => () => {
+    if (k === 'del') return this.setState(s => ({ entry: s.entry.slice(0, -1) }));
+    this.setState(s => (s.entry.length >= 3 ? null : { entry: (s.entry === '0' ? '' : s.entry) + k }));
+  };
+
+  draft24() {
+    const h12 = this.state.dH + 1;
+    const h = (h12 % 12) + this.state.dP * 12;
+    return String(h).padStart(2, '0') + ':' + String(this.state.dM * 5).padStart(2, '0');
+  }
+
+  wheelRef(key, idx) {
+    return el => { if (el && el._k !== key) { el._k = key; el.scrollTop = idx * 44; } };
+  }
+
+  wheelScroll(key, max) {
+    return e => {
+      const el = e.currentTarget || e.target;
+      clearTimeout(this['_w' + key]);
+      this['_w' + key] = setTimeout(() => {
+        const i = Math.max(0, Math.min(max, Math.round(el.scrollTop / 44)));
+        if (this.state[key] !== i) this.setState({ [key]: i });
+      }, 110);
+    };
+  }
+
+  fmt12(t) {
+    const p = t.split(':'), h = +p[0];
+    return ((h % 12) || 12) + ':' + p[1] + ' ' + (h < 12 ? 'AM' : 'PM');
+  }
+
+  chartAt(e) {
+    const r = e.currentTarget.getBoundingClientRect();
+    const pts = this.points();
+    if (!pts.length) return;
+    const f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    this.setState({ scrub: Math.round(f * (pts.length - 1)) });
+  }
+  chartDown = e => { this.dragging = true; if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId); this.chartAt(e); };
+  chartMove = e => { if (this.dragging) this.chartAt(e); };
+  chartUp = () => { this.dragging = false; };
+
+  inRange() {
+    const all = this.sessions();
+    const span = RANGE_MS[this.state.range];
+    if (span === Infinity) return all;
+    const cut = Date.now() - span;
+    return all.filter(s => s.ts >= cut);
+  }
+
+  points() {
+    const list = this.inRange();
+    if (list.length < 2) return list.map((s, i) => ({ x: 160, y: 66, s }));
+    const reps = list.map(s => s.reps);
+    const min = Math.min.apply(null, reps), max = Math.max.apply(null, reps);
+    const span = max - min || 1;
+    return list.map((s, i) => ({
+      x: 6 + (i / (list.length - 1)) * 308,
+      y: 118 - ((s.reps - min) / span) * 100,
+      s
+    }));
+  }
+
+  fmtDay(ts) { const d = new Date(ts); return DAYS[d.getDay()] + ' ' + d.getDate(); }
+  fmtShort(ts) { const d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate(); }
+  ago(ts) {
+    const d = Math.floor((Date.now() - ts) / 864e5);
+    if (d <= 0) return 'today'; if (d === 1) return 'yesterday';
+    if (d < 7) return d + 'd ago'; if (d < 60) return Math.round(d / 7) + 'w ago';
+    return Math.round(d / 30) + 'mo ago';
+  }
+
+  pill(active) {
+    return 'flex:1;padding:10px 6px;border-radius:var(--rp);text-align:center;font-size:14.5px;font-weight:600;letter-spacing:.01em;transition:background .16s,color .16s;' +
+      (active ? 'background:var(--accent);color:var(--accent-ink)' : 'background:transparent;color:var(--fg2)');
+  }
+  mini(active) {
+    return 'padding:7px 13px;border-radius:var(--rp);font-size:13.5px;font-weight:600;' +
+      (active ? 'background:var(--accent);color:var(--accent-ink)' : 'background:transparent;color:var(--fg2)');
+  }
+  chip(active) {
+    return 'padding:9px 14px;border-radius:var(--rp);font-family:var(--fm);font-size:13px;border:1px solid ' +
+      (active ? 'var(--accent);background:color-mix(in oklab, var(--accent) 18%, transparent);color:var(--accent)' : 'var(--line);background:transparent;color:var(--fg2)');
+  }
+  wheelItem(active) {
+    return 'height:44px;line-height:44px;scroll-snap-align:center;font-family:var(--fm);font-size:18px;transition:color .15s,opacity .15s;' +
+      (active ? 'color:var(--fg);opacity:1' : 'color:var(--fg2);opacity:.5');
+  }
+  track(on) {
+    return 'width:50px;height:30px;border-radius:999px;padding:3px;display:flex;transition:background .18s;background:' + (on ? 'var(--accent)' : 'var(--surf2)') +
+      ';justify-content:' + (on ? 'flex-end' : 'flex-start');
+  }
+  knob(on) {
+    return 'width:24px;height:24px;border-radius:50%;background:' + (on ? 'var(--accent-ink)' : 'var(--fg3)') + ';transition:background .18s';
+  }
+
+  renderVals() {
+    const s = this.state;
+    const ex = EXS.find(e => e.id === s.ex) || EXS[0];
+    const list = this.sessions();
+    const last = list[list.length - 1];
+    const best = list.reduce((m, x) => (x.reps > m.reps ? x : m), { reps: 0, ts: 0 });
+
+    // log grouping
+    const groups = [];
+    list.slice().reverse().forEach(x => {
+      const d = new Date(x.ts), y = d.getFullYear(), mi = d.getMonth();
+      let g = groups[groups.length - 1];
+      if (!g || g.y !== y) { g = { y: y, year: String(y), months: [] }; groups.push(g); }
+      let m = g.months[g.months.length - 1];
+      if (!m || m.mi !== mi) { m = { mi, label: MONTHS[mi], rows: [], reps: 0, dur: 0 }; g.months.push(m); }
+      m.reps += x.reps; m.dur += x.dur;
+      m.rows.push({ day: this.fmtDay(x.ts), reps: x.reps, pace: (x.dur / x.reps).toFixed(1) + ' s/rep' });
+    });
+    groups.forEach(g => g.months.forEach(m => { m.meta = m.reps.toLocaleString() + ' reps · ' + (m.dur / m.reps).toFixed(1) + ' s/rep'; }));
+
+    // stats
+    const rl = this.inRange();
+    const lifetime = list.reduce((a, x) => a + x.reps, 0);
+    const rangeReps = rl.reduce((a, x) => a + x.reps, 0);
+    const rangeDur = rl.reduce((a, x) => a + x.dur, 0);
+    const avg = arr => (arr.length ? Math.round(arr.reduce((a, b) => a + b.reps, 0) / arr.length) : 0);
+    const first3 = avg(rl.slice(0, 3)), last3 = avg(rl.slice(-3));
+    const gain = last3 - first3;
+    let slope = 0;
+    if (rl.length > 2) {
+      const t0 = rl[0].ts;
+      const xs = rl.map(x => (x.ts - t0) / 864e5), ys = rl.map(x => x.reps);
+      const mx = xs.reduce((a, b) => a + b, 0) / xs.length, my = ys.reduce((a, b) => a + b, 0) / ys.length;
+      let num = 0, den = 0;
+      xs.forEach((x, i) => { num += (x - mx) * (ys[i] - my); den += (x - mx) * (x - mx); });
+      slope = den ? num / den : 0;
+    }
+    const perUnit = s.range === 'week' ? 1 : s.range === 'month' ? 7 : 30;
+    const perLabel = s.range === 'week' ? 'per day' : s.range === 'month' ? 'per week' : 'per month';
+    const rangeWord = s.range === 'all' ? 'all time' : 'this ' + s.range;
+
+    const pts = this.points();
+    const si = pts.length ? Math.min(pts.length - 1, s.scrub === null ? pts.length - 1 : s.scrub) : 0;
+    const sp = pts[si];
+    const line = pts.length > 1 ? pts.map((p, i) => (i ? 'L' : 'M') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ') : '';
+    const area = pts.length > 1 ? line + ' L314 128 L6 128 Z' : '';
+
+    const dayKeys = {};
+    list.forEach(x => { dayKeys[new Date(x.ts).toDateString()] = 1; });
+    let streak = 0;
+    for (let i = 0; i < 400; i++) {
+      const d = new Date(Date.now() - i * 864e5);
+      if (dayKeys[d.toDateString()]) streak++;
+      else if (i > 0) break;
+    }
+
+    const reps = parseInt(s.entry, 10) || 0;
+    const t = THEMES[s.theme] || THEMES['dark-gym'];
+    const draft = this.draft24();
+    const dupe = s.times.indexOf(draft) >= 0;
+
+    return {
+      isHome: s.page === 'home', isLog: s.page === 'log', isStats: s.page === 'stats', isSet: s.page === 'settings',
+      idle: s.phase === 'idle', running: s.phase === 'run', counting: s.phase === 'count', entering: s.phase === 'entry',
+      countVal: s.countVal, toast: s.toast,
+
+      exLabel: ex.label, exLower: ex.lower, exSubLabel: 'Max ' + ex.lower + ' in 60 seconds',
+      exOpts: EXS.map((e, i) => ({
+        label: e.short,
+        pick: () => this.set({ ex: e.id, scrub: null }),
+        segSt: this.pill(e.id === s.ex)
+      })),
+      exNext: () => this.set(st => ({ ex: EXS[(EXS.findIndex(e => e.id === st.ex) + 1) % 3].id, scrub: null })),
+      clock: s.phase === 'run'
+        ? Math.floor(Math.ceil(s.remaining) / 60) + ':' + String(Math.ceil(s.remaining) % 60).padStart(2, '0')
+        : s.phase === 'entry' ? '0:00' : '1:00',
+      ringOffset: (741.4 * (1 - (s.phase === 'run' ? s.remaining / 60 : s.phase === 'entry' ? 0 : 1))).toFixed(1),
+      phaseLabel: s.phase === 'run' ? 'Go' : s.phase === 'entry' ? "Time's up" : 'Ready',
+      start: this.start, cancel: this.cancel, saveSet: this.saveSet,
+
+      lastReps: last ? last.reps : '—', lastWhen: last ? this.ago(last.ts) : 'no sets yet',
+      bestReps: best.reps || '—', bestWhen: best.ts ? this.ago(best.ts) : '—',
+      streakLabel: streak + ' day streak',
+
+      logGroups: groups, logEmpty: !groups.length,
+      logSummary: list.length ? list.length + (list.length === 1 ? ' set · ' : ' sets · ') + lifetime.toLocaleString() + ' reps' : 'No sets yet',
+
+      ranges: RANGES.map(r => ({ label: r.label, pick: () => this.setState({ range: r.id, scrub: null }), st: this.pill(r.id === s.range) })),
+      lifetime: lifetime.toLocaleString(),
+      rangeDelta: rl.length ? '+' + rangeReps.toLocaleString() + ' ' + rangeWord : 'nothing logged ' + rangeWord,
+      statCards: [
+        { k: 'Then → now', v: rl.length > 1 ? first3 + ' → ' + last3 : '—', sub: rl.length > 1 ? (gain >= 0 ? '+' + gain : gain) + ' reps a set' : 'need a few sets' },
+        { k: 'Trend', v: rl.length > 2 ? (slope * perUnit >= 0 ? '+' : '') + (slope * perUnit).toFixed(1) : '—', sub: 'reps ' + perLabel },
+        { k: 'Avg pace', v: rangeReps ? (rangeDur / rangeReps).toFixed(1) + 's' : '—', sub: 'per rep, ' + rangeWord },
+        { k: 'Sets logged', v: rl.length || '—', sub: rangeWord }
+      ],
+      statsNote: rl.length > 2
+        ? (gain > 0
+          ? 'Up ' + gain + ' reps a set since the start of ' + (s.range === 'all' ? 'your log' : 'the ' + s.range) + '. That progress is all yours — keep going.'
+          : 'Holding steady around ' + last3 + '. Showing up is the hard part, and you\u2019re doing it.')
+        : 'Log a few more minutes and the trend line will have something to say.',
+      hasChart: pts.length > 1, noChart: pts.length < 2,
+      chartEmpty: rl.length === 1 ? 'One more minute and your trend line starts.' : 'Log two minutes to see your trend.',
+      chartLine: line, chartArea: area,
+      scrubX: sp ? sp.x.toFixed(1) : 160, scrubY: sp ? sp.y.toFixed(1) : 66,
+      dotSt: 'position:absolute;width:11px;height:11px;border-radius:50%;box-sizing:border-box;background:var(--bg);border:2.5px solid var(--accent);pointer-events:none;transform:translate(-50%,-50%);left:' +
+        ((sp ? sp.x : 160) / 320 * 100).toFixed(2) + '%;top:' + (sp ? sp.y : 66).toFixed(1) + 'px',
+      scrubDate: sp ? new Date(sp.s.ts).toDateString().slice(0, 10) : 'No data',
+      scrubReps: sp ? sp.s.reps : '—',
+      chartFrom: rl.length ? this.fmtShort(rl[0].ts) : '—',
+      chartTo: rl.length ? this.fmtShort(rl[rl.length - 1].ts) : '—',
+      chartDown: this.chartDown, chartMove: this.chartMove, chartUp: this.chartUp,
+
+      keys: ['1','2','3','4','5','6','7','8','9','C','0','⌫'].map(k => ({
+        label: k,
+        press: k === 'C' ? () => this.setState({ entry: '' }) : this.key(k === '⌫' ? 'del' : k)
+      })),
+
+      modes: [{ id: 'dark', label: 'Dark' }, { id: 'light', label: 'Light' }].map(m => ({
+        label: m.label, pick: () => this.set({ mode: m.id }), st: this.mini(m.id === s.mode)
+      })),
+      accents: ACCENTS.map(a => ({
+        pick: () => this.set({ accent: a.hex }),
+        st: 'width:34px;height:34px;border-radius:50%;background:' + a.hex +
+          ';box-shadow:0 0 0 ' + (a.hex === s.accent ? '2.5px var(--bg),0 0 0 5px ' + a.hex : '0 transparent') + ';transition:box-shadow .15s'
+      })),
+      themeName: s.theme === 'dark-gym' ? (s.mode === 'light' ? 'Light gym' : 'Dark gym') : t.name,
+      cycleTheme: () => this.set(st => ({ theme: THEME_IDS[(THEME_IDS.indexOf(st.theme) + 1) % THEME_IDS.length] })),
+
+      notifOn: s.notif, notifSub: s.notif ? 'Nudges you to do a minute' : 'Off',
+      toggleNotif: () => this.set(st => ({ notif: !st.notif })),
+      notifTrack: this.track(s.notif), notifKnob: this.knob(s.notif),
+      notifModes: [{ id: 'interval', label: 'Interval' }, { id: 'scheduled', label: 'Scheduled' }].map(m => ({
+        label: m.label, pick: () => this.set({ notifMode: m.id }), st: this.mini(m.id === s.notifMode)
+      })),
+      notifInterval: s.notifMode === 'interval', notifScheduled: s.notifMode === 'scheduled',
+      intervalLabel: s.interval + ' hours',
+      intervals: [2, 3, 4, 6, 8].map(h => ({ label: h + 'h', pick: () => this.set({ interval: h }), st: this.chip(h === s.interval) })),
+      times: s.times.slice().sort().map(tm => ({
+        label: this.fmt12(tm), remove: () => this.set(st => ({ times: st.times.filter(x => x !== tm) })), st: this.chip(true)
+      })),
+      colSt: 'flex:1;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y mandatory;padding:44px 0;text-align:center;scrollbar-width:none;-ms-overflow-style:none',
+      hoursCol: Array.from({ length: 12 }, (_, i) => ({ label: String(i + 1), st: this.wheelItem(i === s.dH) })),
+      minsCol: Array.from({ length: 12 }, (_, i) => ({ label: String(i * 5).padStart(2, '0'), st: this.wheelItem(i === s.dM) })),
+      apCol: ['AM', 'PM'].map((l, i) => ({ label: l, st: this.wheelItem(i === s.dP) })),
+      hRef: this.wheelRef('h', s.dH), mRef: this.wheelRef('m', s.dM), pRef: this.wheelRef('p', s.dP),
+      hScroll: this.wheelScroll('dH', 11), mScroll: this.wheelScroll('dM', 11), pScroll: this.wheelScroll('dP', 1),
+      addLabel: dupe ? 'Already added' : 'Add ' + this.fmt12(draft),
+      addTime: () => this.set(st => (st.times.indexOf(this.draft24()) >= 0 ? null : { times: st.times.concat([this.draft24()]) })),
+      addSt: 'width:100%;margin-top:12px;height:46px;border-radius:var(--rp);font-size:14px;font-weight:700;letter-spacing:.04em;' +
+        (dupe ? 'background:var(--surf2);color:var(--fg3)' : 'background:var(--accent);color:var(--accent-ink)'),
+      clearAll: () => this.set({ logged: [], scrub: null, toast: 'Logged sets erased.' }),
+
+      ico0: () => this.set({ icon: 0 }), ico1: () => this.set({ icon: 1 }),
+      ico2: () => this.set({ icon: 2 }), ico3: () => this.set({ icon: 3 }),
+      icoSt0: this.icoSt(0), icoSt1: this.icoSt(1), icoSt2: this.icoSt(2), icoSt3: this.icoSt(3),
+
+      entryTitle: 'Minute complete',
+      entryHint: reps ? 'That\u2019s ' + (s.elapsed / reps).toFixed(1) + ' seconds a rep' : 'How many did you get?',
+      entryDisplay: s.entry || '0',
+      entryColor: s.entry ? 'var(--fg)' : 'var(--fg3)',
+      saveSt: 'flex:1;height:56px;border-radius:var(--rp);font-size:15px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;' +
+        (reps ? 'background:var(--accent);color:var(--accent-ink)' : 'background:var(--surf2);color:var(--fg3)'),
+
+      tabs: [
+        { id: 'home', label: 'Train', d: 'M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16M12 9.5V13l2.5 1.8M9.5 2.5h5' },
+        { id: 'log', label: 'Log', d: 'M4 7h16M4 12h16M4 17h10' },
+        { id: 'stats', label: 'Stats', d: 'M4 18l5.5-6.5 4 3L20 6' },
+        { id: 'settings', label: 'Settings', d: 'M4 8h9M17 8h3M4 16h3M11 16h9M15 5.5v5M8 13.5v5' }
+      ].map(t2 => ({
+        label: t2.label, d: t2.d,
+        pick: () => this.setState({ page: t2.id }),
+        st: 'flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0 3px;transition:color .15s;color:' +
+          (s.page === t2.id ? 'var(--accent)' : 'var(--fg3)')
+      }))
+    };
+  }
+
+  icoSt(i) {
+    return 'width:64px;height:64px;border-radius:16px;padding:0;overflow:hidden;transition:box-shadow .15s;box-shadow:0 0 0 ' +
+      (this.state.icon === i ? '2.5px var(--surf),0 0 0 5px var(--accent)' : '1px var(--line)');
+  }
+}
+
+</script>
+</body>
+</html>

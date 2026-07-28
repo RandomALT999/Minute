@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<title>Minute</title>
+<meta name="description" content="Max reps in 60 seconds. One minute a day.">
+
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Minute">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0A0A0B">
+
+<link id="manifest-link" rel="manifest" href="./manifest.webmanifest">
+<link id="apple-icon" rel="apple-touch-icon" href="./icons/icon-0-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-0-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Figtree:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+
+<style>
+:root{--bg:#0A0A0B;--surf:#141416;--surf2:#1E1E21;--line:rgba(255,255,255,0.09);--fg:#F7F7F5;--fg2:rgba(247,247,245,0.60);--fg3:rgba(247,247,245,0.56);--accent:#FF7A29;--accent-ink:#170A00;--r:20px;--rb:16px;--rp:999px;--fu:'Barlow',-apple-system,system-ui,sans-serif;--fn:'Barlow Condensed','Barlow',sans-serif;--fm:'IBM Plex Mono',ui-monospace,monospace}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;overscroll-behavior:none;background:var(--bg)}
+body{font-family:var(--fu);color:var(--fg);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+a{color:var(--accent);text-decoration:none}
+a:hover{opacity:.7}
+::-webkit-scrollbar{width:0;height:0}
+*{scrollbar-width:none}
+@keyframes wtRise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@keyframes wtSheet{from{transform:translateY(100%)}to{transform:none}}
+@keyframes wtFade{from{opacity:0}to{opacity:1}}
+@keyframes wtHalo{0%{transform:scale(.86);opacity:.5}70%{transform:scale(1.18);opacity:0}100%{opacity:0}}
+@keyframes wtToast{0%{opacity:0;transform:translateY(10px)}12%{opacity:1;transform:none}84%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-6px)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<input id="import-file" type="file" accept="application/json,.json" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+<noscript><div style="padding:40px 24px;font-family:sans-serif">Minute needs JavaScript.</div></noscript>
+<script src="./app.js"></script>
+</body>
+</html>
