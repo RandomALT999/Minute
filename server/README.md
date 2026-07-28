@@ -1,86 +1,95 @@
-# Background reminders
+# The push service
 
 One Minute is a static site, so it cannot hold a VAPID private key or run a
-clock. This directory is the half that can: a scheduler that runs on GitHub
-Actions and sends Web Push, so a reminder arrives **whether or not the app is
-open**. On iOS that is the only mechanism that works at all — a closed PWA gets
-no timers, no background sync, nothing.
+clock. This is the piece that can: a Cloudflare Worker that stores the
+subscriptions the app registers and fires the nudges on a one-minute cron.
+
+Because the clock runs here rather than on the phone, a reminder arrives
+**whether or not the app is open** — on iOS that is the only mechanism that
+works at all. A closed PWA gets no timers, no background sync, nothing.
 
 ```
-your phone  ──subscribe──►  browser push service (Apple/Google)
-                                      ▲
-GitHub Actions cron ──web-push, signed with VAPID──┘
+phone ──subscribe──► Worker ──► KV
+                       ▲
+             cron, every minute
+                       │
+                       └──web-push, VAPID-signed──► Apple/Google ──► phone
 ```
 
-## Setup
+## Deploy
 
-Steps 1 and 2 are already done in this repo.
-
-**1. VAPID keypair** — `node scripts/gen-vapid.js` prints a fresh pair. The
-public key goes in [`config.js`](../config.js); the private key goes in a
-secret and nowhere else.
-
-**2. Secrets** — `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`
-(a `mailto:` for your own address, which push services require as a contact).
-
-**3. Register your phone.** Open the app on the device you want nudged, go to
-Settings → Reminders, turn notifications on and accept the permission prompt,
-then tap **Copy code**. That code is your push subscription plus your reminder
-schedule.
-
-**4. Store it.** Paste the code into a `PUSH_SUBSCRIPTIONS` secret:
+From this directory. It needs a free Cloudflare account and nothing else — no
+card, no paid plan.
 
 ```bash
-gh secret set PUSH_SUBSCRIPTIONS -R RandomALT999/One-Minute
+npx wrangler login
+npx wrangler kv namespace create SUBS
 ```
 
-It takes the code on stdin, so paste and press Ctrl-D (or use the repo's
-Settings → Secrets page in a browser). To nudge more than one device, put both
-objects in the same JSON array.
-
-**5. Check it.** Run the workflow by hand with **dry run** ticked — it logs
-what it would send and why, without sending:
+Paste the id it prints into `wrangler.toml`, then:
 
 ```bash
-gh workflow run reminders.yml -R RandomALT999/One-Minute -f dry_run=true
-gh run watch -R RandomALT999/One-Minute
+npx wrangler secret put VAPID_PRIVATE_KEY
+npx wrangler deploy
 ```
 
-Then run it again without dry run and your phone should buzz.
+`wrangler deploy` prints the Worker URL. Put it in [`../config.js`](../config.js)
+as `endpoint` and push — the app starts registering itself on next launch.
+
+Generate a keypair with `node ../../scripts/gen-vapid.js` if you ever need a new
+one. The public half goes in `config.js` **and** `wrangler.toml`; the private
+half goes only into `wrangler secret put`, never into a file.
+
+## Check it
+
+```bash
+curl https://one-minute-push.<your-subdomain>.workers.dev/health
+```
+
+`{"ok":true,"devices":1}` once a phone has registered. To make a device buzz on
+demand:
+
+```bash
+curl -X POST "https://one-minute-push.<subdomain>.workers.dev/test?key=<VAPID_PUBLIC_KEY>"
+```
+
+Live cron logs: `npx wrangler tail`.
+
+## Endpoints
+
+| | |
+|---|---|
+| `POST /subscribe` | `{subscription, prefs}` — the app calls this on enable and on every settings change |
+| `POST /unsubscribe` | `{endpoint}` — called when reminders are switched off |
+| `GET /health` | Liveness plus a device count |
+| `POST /test?key=…` | Pushes to every device now, ignoring the schedule. Gated on the VAPID public key so it is not an open relay |
 
 ## How it decides
 
-`send-reminders.js` converts "now" into the device's own local time using the
-`tz` recorded in the code, so it stays right through DST.
+`dueAt()` in `index.js` converts "now" into the device's own timezone with
+`Intl`, so it follows DST without a timezone database.
 
-- **Scheduled mode** fires on your listed times.
-- **Interval mode** has no memory of your last set — there is nowhere to store
-  it — so instead of "every N hours since you trained" it becomes a fixed
-  ladder from 08:00 to 22:00, every N hours.
+- **Scheduled** fires on an exact local minute match.
+- **Interval** fires N hours after the later of your last set, your last nudge,
+  and local midnight — and stays quiet between 22:00 and 07:00.
+- One nudge per slot, and none at all if a set was already logged inside it.
+  `lastSetTs` rides along on every prefs sync, so this stays current.
 
-A slot fires when the local clock is inside its window (`WINDOW_MINUTES`, 20 by
-default). The window is wider than the 15-minute cron because GitHub's
-scheduled runs start late under load.
+Dead subscriptions (`404`/`410`) are pruned automatically.
 
-## What to expect
+## Why not the usual `web-push` package
 
-- **Late, not missed.** GitHub queues cron jobs at low priority; a nudge can
-  land 5–20 minutes after the time you set. If you want minute accuracy, this
-  wants a real host — the client already speaks to a normal push server, set
-  `endpoint` in `config.js` and it will POST subscriptions there instead.
-- **Cron sleeps on quiet repos.** GitHub disables scheduled workflows after 60
-  days with no commits. Any push wakes it up.
-- **Re-copy after changing your times.** The schedule travels inside the code,
-  so the secret is a snapshot. Changing reminder settings in the app does not
-  reach the secret on its own.
-- **Re-copy if reminders stop.** Push subscriptions expire and get rotated by
-  the browser. The workflow log says `gone` when that has happened.
+It is Node-only and cannot run on Workers, so `push.js` implements the same
+protocol — RFC 8291 `aes128gcm` payload encryption and RFC 8292 VAPID — against
+Web Crypto. It is checked against the reference implementation: the tests
+decrypt `web-push`'s own ciphertext with our code and verify our VAPID JWTs
+against the public key.
 
 ## Files
 
 | | |
 |---|---|
-| `send-reminders.js` | Decides who is due and sends the push |
-| `../.github/workflows/reminders.yml` | The cron that runs it |
-| `../scripts/gen-vapid.js` | Generates a keypair |
-| `../config.js` | Public key the app subscribes with |
+| `worker/index.js` | Endpoints, schedule, KV storage |
+| `worker/push.js` | Encryption and VAPID signing |
+| `worker/wrangler.toml` | Cron, bindings, public config |
+| `../scripts/gen-vapid.js` | Keypair generation |

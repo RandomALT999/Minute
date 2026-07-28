@@ -1,0 +1,22 @@
+name = "one-minute-push"
+main = "index.js"
+compatibility_date = "2025-01-01"
+
+# Every minute, so a reminder lands on the minute you asked for.
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+ALLOWED_ORIGIN = "https://randomalt999.github.io"
+VAPID_SUBJECT = "mailto:alexdogs999@gmail.com"
+# Public half of the VAPID pair — the same value that is in ../../config.js.
+# It ships to browsers by design, so it is not a secret.
+VAPID_PUBLIC_KEY = "BJz8I3_sqznkD4t97QnLmYgaZtMWnsiqC2wQ_nZNHSTRaSmijHvRRvgk66ttKBBZC9gf81MTxTlS-RQ0fwnisxY"
+
+# VAPID_PRIVATE_KEY is set separately and never lives in this file:
+#   npx wrangler secret put VAPID_PRIVATE_KEY
+
+# Created by `npx wrangler kv namespace create SUBS`; paste the id it prints.
+[[kv_namespaces]]
+binding = "SUBS"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
