@@ -1,8 +1,8 @@
 {
-  "name": "Minute",
-  "short_name": "Minute",
+  "name": "One Minute",
+  "short_name": "One Minute",
   "description": "Max reps in 60 seconds. One minute a day.",
-  "id": "minute",
+  "id": "one-minute",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

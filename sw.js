@@ -1,7 +1,8 @@
-/* Minute service worker — app shell precache, offline-first statics,
+/* One Minute service worker — app shell precache, offline-first statics,
    and the push/notification handlers the app needs on iOS. */
 
-var VERSION = 'v1.0.0';
+var APP_NAME = 'One Minute';
+var VERSION = 'v1.1.0';
 var SHELL_CACHE = 'minute-shell-' + VERSION;
 var ASSET_CACHE = 'minute-assets-' + VERSION;
 var FONT_CACHE = 'minute-fonts';
@@ -10,6 +11,7 @@ var SHELL = [
   './',
   './index.html',
   './app.js',
+  './config.js',
   './manifest.webmanifest',
   './icons/icon-0-180.png',
   './icons/icon-0-192.png',
@@ -103,15 +105,17 @@ self.addEventListener('fetch', function (e) {
    scheduler, per BACKEND.md §7) is the missing half — but the client side is
    done, so subscriptions start working the moment one exists. */
 self.addEventListener('push', function (e) {
-  var d = { title: 'One minute', body: 'Time for a set.' };
+  var d = { body: 'Time for a set.', icon: 0 };
   if (e.data) {
     try { d = Object.assign(d, e.data.json()); }
     catch (err) { d.body = e.data.text() || d.body; }
   }
-  e.waitUntil(self.registration.showNotification(d.title, {
+  /* Title is always the app name, so the notification reads "One Minute" over
+     the message instead of repeating it in the attribution line. */
+  e.waitUntil(self.registration.showNotification(APP_NAME, {
     body: d.body,
-    icon: './icons/icon-0-192.png',
-    badge: './icons/icon-0-192.png',
+    icon: './icons/icon-' + (d.icon || 0) + '-192.png',
+    badge: './icons/icon-' + (d.icon || 0) + '-192.png',
     tag: 'minute',
     renotify: true,
     vibrate: [180, 90, 180],

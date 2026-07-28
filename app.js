@@ -94,7 +94,8 @@ function patchKids(dom, oldK, newK, isSvg) {
 /* ------------------------------------------------------------- constants - */
 
 var STORE_KEY = 'wt.minute.v1';
-var APP_VERSION = '1.0.0';
+var APP_NAME = 'One Minute';
+var APP_VERSION = '1.1.0';
 
 var EXS = [
   { id: 'push', label: 'Push-ups', short: 'Push', lower: 'push-ups' },
@@ -146,6 +147,21 @@ var RANGE_MS = { week: 7 * 864e5, month: 30 * 864e5, year: 365 * 864e5, all: Inf
 var LOG_PAGE = 80;
 
 var HAS_NOTIF = typeof Notification !== 'undefined' && 'serviceWorker' in navigator;
+
+/* Web Push. config.js supplies { endpoint, vapidPublicKey }; with neither set
+   the app falls back to the foreground reminder engine, which can only fire
+   while the app is running. Real delivery to a closed app needs the server. */
+var PUSH = window.MINUTE_PUSH || {};
+var PUSH_ON = !!(PUSH.endpoint && PUSH.vapidPublicKey);
+var PUSH_API = PUSH_ON ? String(PUSH.endpoint).replace(/\/+$/, '') : '';
+
+function urlB64ToUint8Array(b64) {
+  var pad = new Array((4 - b64.length % 4) % 4 + 1).join('=');
+  var raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  var out = new Uint8Array(raw.length);
+  for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
 
 function lum(hex) {
   if (typeof hex !== 'string' || hex.charAt(0) !== '#' || hex.length < 7) return 0;
@@ -213,7 +229,9 @@ var app = {
     clearArm: false,
     perm: HAS_NOTIF ? Notification.permission : 'unsupported',
     canInstall: false,
-    updateReady: false
+    updateReady: false,
+    pushLive: false,
+    pushErr: null
   },
 
   setState: function (patch, cb) {
@@ -280,6 +298,11 @@ var app = {
         times: s.times, lastNotif: s.lastNotif
       }));
     } catch (e) {}
+    /* Any settings change is a reason to re-send prefs to the push server. */
+    if (PUSH_ON && s.notif) {
+      clearTimeout(this._syncT);
+      this._syncT = setTimeout(function () { app.syncPush(); }, 800);
+    }
   },
 
   applyTheme: function () {
@@ -350,7 +373,7 @@ var app = {
     this.setState({ phase: 'entry', remaining: 0, elapsed: 60, entry: '' });
     this.releaseWake();
     this.alarm();
-    if (document.hidden) this.notify("Minute's up", 'Log your reps while you remember them.');
+    if (document.hidden) this.notify("Your minute's up — log your reps while you remember them.");
   },
 
   /* Recover from a backgrounded/suspended tab: timers stop, but countAt and
@@ -454,37 +477,106 @@ var app = {
 
   /* ------------------------------------------------------ notifications - */
 
-  notify: function (title, body) {
+  /* The title line is the app name — the message goes in the body, so the
+     notification reads "One Minute" over the text rather than repeating it. */
+  notify: function (body) {
     if (!HAS_NOTIF || Notification.permission !== 'granted') return;
     var opts = {
       body: body,
       icon: './icons/icon-' + this.state.icon + '-192.png',
+      badge: './icons/icon-' + this.state.icon + '-192.png',
       tag: 'minute',
       renotify: true,
       vibrate: [180, 90, 180]
     };
-    if (this.swReg && this.swReg.showNotification) this.swReg.showNotification(title, opts).catch(function () {});
-    else { try { new Notification(title, opts); } catch (e) {} }
+    if (this.swReg && this.swReg.showNotification) this.swReg.showNotification(APP_NAME, opts).catch(function () {});
+    else { try { new Notification(APP_NAME, opts); } catch (e) {} }
+  },
+
+  /* Everything the server needs to fire the right nudge at the right time.
+     Times are local wall-clock plus a tz, so the server stays DST-correct. */
+  pushPrefs: function () {
+    var s = this.state;
+    return {
+      enabled: s.notif,
+      mode: s.notifMode,
+      intervalHours: s.interval,
+      times: s.times.slice().sort(),
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      exercise: s.ex,
+      icon: s.icon,
+      lastSetTs: this.lastSetTs()
+    };
+  },
+
+  subscribePush: function () {
+    if (!PUSH_ON || !app.swReg || !app.swReg.pushManager) return Promise.resolve(false);
+    return app.swReg.pushManager.getSubscription().then(function (sub) {
+      if (sub) return sub;
+      return app.swReg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8Array(PUSH.vapidPublicKey)
+      });
+    }).then(function (sub) {
+      return app.syncPush(sub);
+    }).catch(function (e) {
+      app.setState({ pushLive: false, pushErr: String((e && e.message) || e) });
+      return false;
+    });
+  },
+
+  syncPush: function (sub) {
+    if (!PUSH_ON || !app.swReg) return Promise.resolve(false);
+    var send = function (s) {
+      if (!s) return false;
+      return fetch(PUSH_API + '/subscribe', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ subscription: s, prefs: app.pushPrefs() })
+      }).then(function (r) {
+        app.setState({ pushLive: r.ok, pushErr: r.ok ? null : 'server said ' + r.status });
+        return r.ok;
+      }).catch(function (e) {
+        app.setState({ pushLive: false, pushErr: 'unreachable' });
+        return false;
+      });
+    };
+    if (sub) return send(sub);
+    return app.swReg.pushManager.getSubscription().then(send);
+  },
+
+  unsubscribePush: function () {
+    if (!PUSH_ON || !app.swReg) return Promise.resolve();
+    return app.swReg.pushManager.getSubscription().then(function (sub) {
+      if (!sub) return;
+      return fetch(PUSH_API + '/unsubscribe', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ endpoint: sub.endpoint })
+      }).catch(function () {}).then(function () { return sub.unsubscribe(); });
+    }).then(function () {
+      app.setState({ pushLive: false, pushErr: null });
+    }).catch(function () {});
   },
 
   toggleNotif: function () {
     var s = app.state;
-    if (s.notif) { app.set({ notif: false }); return; }
+    if (s.notif) { app.set({ notif: false }, function () { app.unsubscribePush(); }); return; }
     if (!HAS_NOTIF) { app.toastMsg('This browser has no notification support.'); return; }
     if (Notification.permission === 'denied') {
       app.setState({ perm: 'denied' });
-      app.toastMsg('Blocked in system settings — turn Minute back on there.');
+      app.toastMsg('Blocked in system settings — turn ' + APP_NAME + ' back on there.');
       return;
     }
     if (Notification.permission === 'granted') {
-      app.set({ notif: true, perm: 'granted', lastNotif: Date.now() });
+      app.set({ notif: true, perm: 'granted', lastNotif: Date.now() }, function () { app.subscribePush(); });
       return;
     }
     /* Must be called straight off the tap — this is the user gesture. */
     Notification.requestPermission().then(function (p) {
       app.setState({ perm: p });
-      if (p === 'granted') app.set({ notif: true, lastNotif: Date.now() });
-      else app.toastMsg(p === 'denied' ? 'Blocked — enable Minute in system settings.' : 'Notifications not enabled.');
+      if (p === 'granted') app.set({ notif: true, lastNotif: Date.now() }, function () { app.subscribePush(); });
+      else app.toastMsg(p === 'denied' ? 'Blocked — enable ' + APP_NAME + ' in system settings.' : 'Notifications not enabled.');
     }).catch(function () {});
   },
 
@@ -514,11 +606,12 @@ var app = {
   },
 
   reminderTick: function () {
+    if (this.state.pushLive) return;   /* the server owns delivery */
     var at = this.dueAt();
     if (!at) return;
     var ex = EXS.filter(function (e) { return e.id === app.state.ex; })[0] || EXS[0];
     this.set({ lastNotif: Date.now() });
-    this.notify('One minute', 'Time for a set of ' + ex.lower + '.');
+    this.notify('Time for a set of ' + ex.lower + '.');
   },
 
   /* -------------------------------------------------------- import/export */
@@ -559,7 +652,7 @@ var app = {
       try {
         var d = JSON.parse(String(fr.result));
         var incoming = Array.isArray(d.sets) ? d.sets : (Array.isArray(d.logged) ? d.logged : null);
-        if (!incoming) { app.toastMsg("That file doesn't look like a Minute export."); return; }
+        if (!incoming) { app.toastMsg("That file doesn't look like a " + APP_NAME + " export."); return; }
         var seen = {}, merged = [], added = 0;
         app.state.logged.forEach(function (x) { var k = x.i || x.ts; if (!seen[k]) { seen[k] = 1; merged.push(x); } });
         incoming.forEach(function (x) {
@@ -784,15 +877,25 @@ var app = {
     var draft = this.draft24();
     var dupe = s.times.indexOf(draft) >= 0;
 
-    /* notification copy — honest about what a static, serverless build can do */
+    /* notification copy — says exactly how reminders are being delivered */
     var notifSub, notifNote;
     if (!HAS_NOTIF) { notifSub = 'Not supported on this browser'; notifNote = null; }
     else if (s.perm === 'denied') { notifSub = 'Blocked in system settings'; notifNote = 'Notifications are blocked for this site. Re-enable them in your device settings, then flip this back on.'; }
     else if (s.notif) {
-      notifSub = 'Nudges you to do a minute';
-      notifNote = isIOS() && !isStandalone()
-        ? 'On iPhone, add Minute to your Home Screen and open it from there — iOS only delivers notifications to installed web apps.'
-        : 'Nudges fire while Minute is open or recently used. Reminders that wake a closed app need a push server (see BACKEND.md).';
+      if (isIOS() && !isStandalone()) {
+        notifSub = 'Add to Home Screen first';
+        notifNote = 'On iPhone, add ' + APP_NAME + ' to your Home Screen and open it from there — iOS only delivers notifications to installed web apps.';
+      } else if (s.pushLive) {
+        notifSub = 'On — arrives with the app closed';
+        notifNote = 'Reminders are sent by the push server, so they reach you whether or not ' + APP_NAME + ' is open.';
+      } else if (PUSH_ON) {
+        notifSub = 'On — connecting';
+        notifNote = 'Reaching the push server' + (s.pushErr ? ' failed (' + s.pushErr + ').' : '…') +
+          ' Until it answers, nudges only fire while ' + APP_NAME + ' is open.';
+      } else {
+        notifSub = 'On — only while the app is open';
+        notifNote = 'No push server is configured yet, so nudges only fire while ' + APP_NAME + ' is running. See BACKEND.md §7.';
+      }
     } else { notifSub = 'Off'; notifNote = null; }
 
     return {
@@ -925,7 +1028,7 @@ var app = {
 
       canInstall: s.canInstall, install: this.install,
       showAddHint: isIOS() && !isStandalone(),
-      footer: 'Minute · v' + APP_VERSION + (isStandalone() ? ' · installed' : ' · add to home screen'),
+      footer: APP_NAME + ' · v' + APP_VERSION + (isStandalone() ? ' · installed' : ' · add to home screen'),
 
       ico0: function () { app.set({ icon: 0 }); }, ico1: function () { app.set({ icon: 1 }); },
       ico2: function () { app.set({ icon: 2 }); }, ico3: function () { app.set({ icon: 3 }); },
@@ -965,7 +1068,7 @@ function screenHome(v) {
   return h('div', { key: 'home', style: 'flex:1;min-height:0;display:flex;flex-direction:column;padding:calc(env(safe-area-inset-top) + 16px) 20px 0;animation:wtFade .22s ease' },
 
     h('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:18px' },
-      h('div', { style: 'font-family:var(--fm);font-size:12.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--fg2)' }, 'Minute'),
+      h('div', { style: 'font-family:var(--fm);font-size:12.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--fg2)' }, APP_NAME),
       h('div', { style: 'font-family:var(--fm);font-size:12.5px;letter-spacing:.08em;color:var(--fg3)' }, v.streakLabel)
     ),
 
@@ -1174,27 +1277,27 @@ function screenSettings(v) {
         h('div', { style: 'display:flex;gap:16px;justify-content:space-between' },
           h('button', { onClick: v.ico0, style: v.icoSt0 },
             h('div', { style: 'width:100%;height:100%;border-radius:16px;background:var(--accent);display:flex;align-items:center;justify-content:center' },
-              h('div', { style: 'width:32px;height:32px;border-radius:50%;border:4px solid var(--accent-ink)' })
+              h('div', { style: 'width:42px;height:42px;border-radius:50%;border:5px solid var(--accent-ink)' })
             )
           ),
           h('button', { onClick: v.ico1, style: v.icoSt1 },
-            h('div', { style: 'width:100%;height:100%;border-radius:16px;background:#0C0C0D;display:flex;align-items:flex-end;justify-content:center;gap:5px;padding:16px 0' },
-              h('div', { style: 'width:7px;height:14px;border-radius:3px;background:var(--accent)' }),
-              h('div', { style: 'width:7px;height:24px;border-radius:3px;background:var(--accent)' }),
-              h('div', { style: 'width:7px;height:32px;border-radius:3px;background:var(--accent)' })
+            h('div', { style: 'width:100%;height:100%;border-radius:16px;background:#0C0C0D;display:flex;align-items:flex-end;justify-content:center;gap:7px;padding:11px 0' },
+              h('div', { style: 'width:9px;height:19px;border-radius:4px;background:var(--accent)' }),
+              h('div', { style: 'width:9px;height:32px;border-radius:4px;background:var(--accent)' }),
+              h('div', { style: 'width:9px;height:42px;border-radius:4px;background:var(--accent)' })
             )
           ),
           h('button', { onClick: v.ico2, style: v.icoSt2 },
             h('div', { style: 'width:100%;height:100%;border-radius:16px;background:#F5F3EE;display:flex;align-items:center;justify-content:center' },
-              h('div', { style: 'width:26px;height:26px;background:var(--accent);transform:rotate(45deg);border-radius:5px' })
+              h('div', { style: 'width:34px;height:34px;background:var(--accent);transform:rotate(45deg);border-radius:7px' })
             )
           ),
           h('button', { onClick: v.ico3, style: v.icoSt3 },
-            h('div', { style: 'width:100%;height:100%;border-radius:16px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--fn);font-size:34px;font-weight:700;color:var(--accent-ink);line-height:1' }, '60')
+            h('div', { style: 'width:100%;height:100%;border-radius:16px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--fn);font-size:45px;font-weight:700;color:var(--accent-ink);line-height:1' }, '60')
           )
         ),
         h('div', { style: 'font-size:13px;color:var(--fg3);margin-top:14px;line-height:1.5' },
-          'Sets the icon used when you add Minute to your Home Screen. iOS locks the icon in at install time — re-add the app to change an existing one.')
+          'Sets the icon used when you add ' + APP_NAME + ' to your Home Screen. iOS locks the icon in at install time — re-add the app to change an existing one.')
       ),
 
       h('div', { style: SECT }, 'Reminders'),
@@ -1268,9 +1371,9 @@ function screenSettings(v) {
       v.canInstall || v.showAddHint ? h('div', { key: 'inst' },
         h('div', { style: SECT }, 'Install'),
         v.canInstall
-          ? h('div', { style: CARD }, h('button', { onClick: v.install, style: 'display:block;width:100%;text-align:left;padding:15px 16px;font-size:15px;color:var(--accent)' }, 'Install Minute on this device'))
+          ? h('div', { style: CARD }, h('button', { onClick: v.install, style: 'display:block;width:100%;text-align:left;padding:15px 16px;font-size:15px;color:var(--accent)' }, 'Install ' + APP_NAME + ' on this device'))
           : h('div', { style: 'background:var(--surf);border:1px solid var(--line);border-radius:var(--r);padding:15px 16px;font-size:13.5px;color:var(--fg3);line-height:1.55' },
-              'Tap the Share button in Safari, then ', h('span', { style: 'color:var(--fg2)' }, 'Add to Home Screen'), '. Minute then runs full screen, works offline, and can send reminders.')
+              'Tap the Share button in Safari, then ', h('span', { style: 'color:var(--fg2)' }, 'Add to Home Screen'), '. ' + APP_NAME + ' then runs full screen, works offline, and can send reminders.')
       ) : null,
 
       h('div', { style: 'text-align:center;font-family:var(--fm);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg3);padding:26px 0 6px' }, v.footer)
@@ -1278,8 +1381,11 @@ function screenSettings(v) {
   );
 }
 
+/* height:100dvh (with a 100vh fallback) rather than inset:0 — in iOS Safari a
+   fixed inset:0 box resolves against the *small* viewport, so when the bottom
+   toolbar auto-hides the tab bar stops short of the screen edge. */
 function view(v) {
-  return h('div', { style: 'position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg);color:var(--fg);font-family:var(--fu);overflow:hidden' },
+  return h('div', { style: 'position:fixed;left:0;right:0;top:0;height:100vh;height:100dvh;display:flex;flex-direction:column;background:var(--bg);color:var(--fg);font-family:var(--fu);overflow:hidden' },
 
     v.isHome ? screenHome(v) : null,
     v.isLog ? screenLog(v) : null,
@@ -1374,13 +1480,15 @@ function registerSW() {
   if (!('serviceWorker' in navigator)) return;
   navigator.serviceWorker.register('./sw.js').then(function (reg) {
     app.swReg = reg;
+    /* Re-assert the subscription each launch: browsers rotate endpoints. */
+    if (PUSH_ON && app.state.notif && HAS_NOTIF && Notification.permission === 'granted') app.subscribePush();
     reg.addEventListener('updatefound', function () {
       var sw = reg.installing;
       if (!sw) return;
       sw.addEventListener('statechange', function () {
         if (sw.state === 'installed' && navigator.serviceWorker.controller) {
           app.setState({ updateReady: true });
-          app.toastMsg('Update ready — reopen Minute to apply.');
+          app.toastMsg('Update ready — reopen ' + APP_NAME + ' to apply.');
         }
       });
     });
