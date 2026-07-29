@@ -1481,7 +1481,12 @@ function view(v) {
     v.isStats ? screenStats(v) : null,
     v.isSet ? screenSettings(v) : null,
 
-    h('div', { style: 'display:flex;border-top:1px solid var(--line);background:var(--surf);padding:9px 8px calc(env(safe-area-inset-bottom) + 9px)' },
+    /* Bottom padding is max(), not the safe-area inset plus 9px — adding them
+       double-counts and leaves a visible dead strip once installed, where the
+       inset is already ~34px for the home indicator. The -8px trims it closer
+       to the indicator without letting it sit on the labels; in a browser tab
+       the inset is 0 and the 9px floor takes over. */
+    h('div', { style: 'display:flex;border-top:1px solid var(--line);background:var(--surf);padding:9px 8px max(env(safe-area-inset-bottom) - 8px, 9px)' },
       v.tabs.map(function (t) {
         return h('button', { onClick: t.pick, style: t.st },
           h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', style: 'width:22px;height:22px;display:block' },
