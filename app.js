@@ -95,7 +95,7 @@ function patchKids(dom, oldK, newK, isSvg) {
 
 var STORE_KEY = 'wt.minute.v1';
 var APP_NAME = 'One Minute';
-var APP_VERSION = '1.1.0';
+var APP_VERSION = '1.2.0';
 
 var EXS = [
   { id: 'push', label: 'Push-ups', short: 'Push', lower: 'push-ups' },
@@ -145,6 +145,21 @@ var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'A
 var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 var RANGE_MS = { week: 7 * 864e5, month: 30 * 864e5, year: 365 * 864e5, all: Infinity };
 var LOG_PAGE = 80;
+
+/* Reminder wording. Deliberately says nothing about which exercise — the
+   nudge is to show up, and you pick what to do when you get there. */
+var NUDGES = [
+  'Time for your minute.',
+  'Sixty seconds. That is the whole ask.',
+  'Your minute is waiting.',
+  'Got a minute? This is it.',
+  'One minute, then you are done.',
+  'This is your nudge.',
+  'Sixty seconds well spent.',
+  'Quick one — sixty seconds.',
+  'Your minute, whenever you are ready.',
+  'One minute. That is all.'
+];
 
 var HAS_NOTIF = typeof Notification !== 'undefined' && 'serviceWorker' in navigator;
 
@@ -484,20 +499,20 @@ var app = {
 
   /* ------------------------------------------------------ notifications - */
 
-  /* The title line is the app name — the message goes in the body, so the
-     notification reads "One Minute" over the text rather than repeating it. */
-  notify: function (body) {
+  /* The message goes in the title slot and there is no body. Every platform
+     already labels a notification with the app it came from, so putting the
+     name here as well renders as "One Minute from One Minute". */
+  notify: function (message) {
     if (!HAS_NOTIF || Notification.permission !== 'granted') return;
     var opts = {
-      body: body,
       icon: './icons/icon-' + this.state.icon + '-192.png',
       badge: './icons/icon-' + this.state.icon + '-192.png',
       tag: 'minute',
       renotify: true,
       vibrate: [180, 90, 180]
     };
-    if (this.swReg && this.swReg.showNotification) this.swReg.showNotification(APP_NAME, opts).catch(function () {});
-    else { try { new Notification(APP_NAME, opts); } catch (e) {} }
+    if (this.swReg && this.swReg.showNotification) this.swReg.showNotification(message, opts).catch(function () {});
+    else { try { new Notification(message, opts); } catch (e) {} }
   },
 
   /* Everything the server needs to fire the right nudge at the right time.
@@ -657,9 +672,8 @@ var app = {
     if (this.state.pushLive) return;   /* the server owns delivery */
     var at = this.dueAt();
     if (!at) return;
-    var ex = EXS.filter(function (e) { return e.id === app.state.ex; })[0] || EXS[0];
     this.set({ lastNotif: Date.now() });
-    this.notify('Time for a set of ' + ex.lower + '.');
+    this.notify(NUDGES[Math.floor(Math.random() * NUDGES.length)]);
   },
 
   /* -------------------------------------------------------- import/export */

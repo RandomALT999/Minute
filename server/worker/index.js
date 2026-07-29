@@ -82,19 +82,22 @@ export function dueAt(device, now) {
   return at;
 }
 
-const EX = { push: 'push-ups', pull: 'pull-ups', situp: 'sit-ups' };
-const LINES = [
-  'Time for a set of {ex}.',
-  'One minute of {ex}. That is the whole ask.',
-  'Sixty seconds of {ex} — go.',
-  'Your minute is waiting. {ex}, sixty seconds.',
-  'Quick set of {ex}? One minute.'
+/* Deliberately says nothing about which exercise — the nudge is to show up,
+   and you pick what to do when you get there. */
+const NUDGES = [
+  'Time for your minute.',
+  'Sixty seconds. That is the whole ask.',
+  'Your minute is waiting.',
+  'Got a minute? This is it.',
+  'One minute, then you are done.',
+  'This is your nudge.',
+  'Sixty seconds well spent.',
+  'Quick one — sixty seconds.',
+  'Your minute, whenever you are ready.',
+  'One minute. That is all.'
 ];
 
-function message(prefs) {
-  const ex = EX[prefs.exercise] || 'push-ups';
-  return LINES[Math.floor(Math.random() * LINES.length)].replace('{ex}', ex);
-}
+const nudge = () => NUDGES[Math.floor(Math.random() * NUDGES.length)];
 
 /* ----------------------------------------------------------------- KV --- */
 
@@ -190,7 +193,7 @@ export default {
       const results = [];
       for (const [id, dev] of Object.entries(devices)) {
         const r = await sendPush(dev.subscription, JSON.stringify({
-          body: 'Test nudge — your reminders are working.', icon: dev.prefs?.icon || 0
+          message: 'Test nudge — your reminders are working.', icon: dev.prefs?.icon || 0
         }), vapid);
         results.push({ id, status: r.status, ok: r.ok });
       }
@@ -214,7 +217,7 @@ export default {
 
         const res = await sendPush(
           dev.subscription,
-          JSON.stringify({ body: message(dev.prefs || {}), icon: dev.prefs?.icon || 0 }),
+          JSON.stringify({ message: nudge(), icon: dev.prefs?.icon || 0 }),
           vapid
         );
 
