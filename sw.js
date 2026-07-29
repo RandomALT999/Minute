@@ -1,7 +1,7 @@
 /* One Minute service worker — app shell precache, offline-first statics,
    and the push/notification handlers the app needs on iOS. */
 
-var VERSION = 'v1.2.0';
+var VERSION = 'v1.9.0';
 var SHELL_CACHE = 'minute-shell-' + VERSION;
 var ASSET_CACHE = 'minute-assets-' + VERSION;
 var FONT_CACHE = 'minute-fonts';
@@ -84,17 +84,36 @@ self.addEventListener('fetch', function (e) {
 
   if (url.origin !== self.location.origin) return;
 
-  /* Own static assets: stale-while-revalidate. Offline launches are instant
-     off the cache, and a deploy still lands without a VERSION bump — pure
-     cache-first would pin the app to whatever shipped first. */
+  /* Code is network-first: a deploy has to be able to land. Anything cached
+     only backs it up when the network is gone. */
+  if (/\.(js|webmanifest)$/.test(url.pathname)) {
+    e.respondWith(
+      fetch(req).then(function (res) {
+        if (res && res.ok && res.type === 'basic') {
+          var copy = res.clone();
+          caches.open(ASSET_CACHE).then(function (c) { c.put(req, copy); });
+        }
+        return res;
+      }).catch(function () { return caches.match(req); })
+    );
+    return;
+  }
+
+  /* Everything else (icons) is stale-while-revalidate. The lookup is scoped to
+     ASSET_CACHE deliberately: caches.match() searches every cache in creation
+     order, so the precached shell would answer first and pin the app to
+     whatever shipped when the worker installed. The shell is a cold-start
+     fallback, never the source of truth. */
   e.respondWith(
     caches.open(ASSET_CACHE).then(function (c) {
-      return caches.match(req).then(function (hit) {
-        var net = fetch(req).then(function (res) {
-          if (res && res.ok && res.type === 'basic') c.put(req, res.clone());
-          return res;
-        }).catch(function () { return hit; });
-        return hit || net;
+      var net = fetch(req).then(function (res) {
+        if (res && res.ok && res.type === 'basic') c.put(req, res.clone());
+        return res;
+      }).catch(function () { return null; });
+
+      return c.match(req).then(function (hit) {
+        if (hit) { e.waitUntil(net); return hit; }
+        return net.then(function (res) { return res || caches.match(req); });
       });
     })
   );

@@ -95,7 +95,7 @@ function patchKids(dom, oldK, newK, isSvg) {
 
 var STORE_KEY = 'wt.minute.v1';
 var APP_NAME = 'One Minute';
-var APP_VERSION = '1.8.0';
+var APP_VERSION = '1.9.0';
 
 var EXS = [
   { id: 'push', label: 'Push-ups', short: 'Push', lower: 'push-ups' },
@@ -193,6 +193,40 @@ function lum(hex) {
 
 function startOfToday() { var d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
 
+/* An installed iOS app gets its own storage, separate from Safari's, so
+   choices made in the browser are invisible to it on first launch. iOS does
+   capture the page URL when you add to the Home Screen, so the look travels in
+   the query string instead. */
+var LOOK_KEYS = ['theme', 'mode', 'accent', 'icon', 'ex'];
+
+function lookFromQuery() {
+  try {
+    var q = new URLSearchParams(location.search);
+    if (!q.get('theme') && !q.get('icon')) return null;
+    var out = {};
+    if (THEME_IDS.indexOf(q.get('theme')) >= 0) out.theme = q.get('theme');
+    if (q.get('mode') === 'light' || q.get('mode') === 'dark') out.mode = q.get('mode');
+    if (/^#[0-9a-fA-F]{6}$/.test(q.get('accent') || '')) out.accent = q.get('accent');
+    var ic = parseInt(q.get('icon'), 10);
+    if (ic >= 0 && ic <= 3) out.icon = ic;
+    if (EXS.some(function (e) { return e.id === q.get('ex'); })) out.ex = q.get('ex');
+    return Object.keys(out).length ? out : null;
+  } catch (e) { return null; }
+}
+
+/* Keep the address bar in step with the current look while in a browser, so
+   whatever is on screen is what gets installed. */
+function syncLookToUrl(s) {
+  if (isStandalone() || !history.replaceState) return;
+  var sig = LOOK_KEYS.map(function (k) { return s[k]; }).join('|');
+  if (syncLookToUrl._sig === sig) return;
+  syncLookToUrl._sig = sig;
+  try {
+    var q = LOOK_KEYS.map(function (k) { return k + '=' + encodeURIComponent(s[k]); }).join('&');
+    history.replaceState(null, '', location.pathname + '?' + q);
+  } catch (e) {}
+}
+
 
 function isStandalone() {
   return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
@@ -273,6 +307,12 @@ var app = {
   mount: function () {
     try {
       var raw = localStorage.getItem(STORE_KEY);
+      /* Nothing stored means a first launch — most likely straight off an
+         install, so take the look from the URL the installer captured. */
+      if (!raw) {
+        var look = lookFromQuery();
+        if (look) this.setState(look);
+      }
       if (raw) {
         var d = JSON.parse(raw);
         this.setState(function (s) {
@@ -366,6 +406,7 @@ var app = {
     var st = this.state || {};
     if (st.theme + '|' + st.mode + '|' + st.accent !== this._sig) this.applyTheme();
     this.applyIcon();
+    syncLookToUrl(st);
   },
 
   sessions: function () {
@@ -944,31 +985,19 @@ var app = {
     var draft = this.draft24();
     var dupe = s.times.indexOf(draft) >= 0;
 
-    /* notification copy — says exactly how reminders are being delivered */
-    var notifSub, notifNote;
-    if (!HAS_NOTIF) { notifSub = 'Not supported on this browser'; notifNote = null; }
-    else if (s.perm === 'denied') { notifSub = 'Blocked in system settings'; notifNote = 'Notifications are blocked for this site. Re-enable them in your device settings, then flip this back on.'; }
-    else if (s.notif) {
+    /* Only says something when there is something to do about it — how the
+       reminders get delivered is not the user's problem. */
+    var notifSub, notifNote = null;
+    if (!HAS_NOTIF) notifSub = 'Not supported on this browser';
+    else if (s.perm === 'denied') {
+      notifSub = 'Blocked in system settings';
+      notifNote = 'Notifications are blocked for this site. Re-enable them in your device settings, then flip this back on.';
+    } else if (s.notif) {
       if (isIOS() && !isStandalone()) {
         notifSub = 'Add to Home Screen first';
         notifNote = 'On iPhone, add ' + APP_NAME + ' to your Home Screen and open it from there — iOS only delivers notifications to installed web apps.';
-      } else if (s.pushLive) {
-        notifSub = 'On — arrives with the app closed';
-        notifNote = 'Reminders are sent by the push server, so they reach you whether or not ' + APP_NAME + ' is open.';
-      } else if (PUSH_MODE === 'manual') {
-        notifSub = s.pushSub ? 'On — this device is registered' : 'On — registering…';
-        notifNote = s.pushErr
-          ? 'This browser refused to register for push (' + s.pushErr + '). Nudges will only fire while ' + APP_NAME + ' is open.'
-          : null;
-      } else if (PUSH_ON) {
-        notifSub = 'On — connecting';
-        notifNote = 'Reaching the push server' + (s.pushErr ? ' failed (' + s.pushErr + ').' : '…') +
-          ' Until it answers, nudges only fire while ' + APP_NAME + ' is open.';
-      } else {
-        notifSub = 'On — only while the app is open';
-        notifNote = 'No push server is configured yet, so nudges only fire while ' + APP_NAME + ' is running. See BACKEND.md §7.';
-      }
-    } else { notifSub = 'Off'; notifNote = null; }
+      } else notifSub = 'On';
+    } else notifSub = 'Off';
 
     return {
       isHome: s.page === 'home', isLog: s.page === 'log', isStats: s.page === 'stats', isSet: s.page === 'settings',
@@ -1014,11 +1043,13 @@ var app = {
         { k: 'Avg pace', v: rangeReps ? (rangeDur / rangeReps).toFixed(1) + 's' : '—', sub: 'per rep, ' + rangeWord },
         { k: 'Sets logged', v: rl.length || '—', sub: rangeWord }
       ],
+      /* Nothing below the chart until there is something to say about it — the
+         empty chart already explains itself. */
       statsNote: rl.length > 2
         ? (gain > 0
           ? 'Up ' + gain + ' reps a set since the start of ' + (s.range === 'all' ? 'your log' : 'the ' + s.range) + '. That progress is all yours — keep going.'
           : 'Holding steady around ' + last3 + '. Showing up is the hard part, and you’re doing it.')
-        : 'Log a few more minutes and the trend line will have something to say.',
+        : null,
       hasChart: pts.length > 1, noChart: pts.length < 2,
       chartEmpty: rl.length === 1 ? 'One more minute and your trend line starts.' : 'Log two minutes to see your trend.',
       chartLine: line, chartArea: area,
@@ -1103,6 +1134,7 @@ var app = {
       },
 
       canInstall: s.canInstall, install: this.install,
+      preInstall: !isStandalone(),
       showAddHint: isIOS() && !isStandalone(),
       footer: APP_NAME + ' · v' + APP_VERSION + (isStandalone() ? ' · installed' : ' · add to home screen'),
       /* Temporary readout so the bottom-bar spacing can be diagnosed from the
@@ -1128,7 +1160,7 @@ var app = {
         return {
           label: t2.label, d: t2.d,
           pick: function () { app.setState({ page: t2.id, selSet: null }); },
-          st: 'flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 0 2px;transition:color .15s;color:' +
+          st: 'flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0 3px;transition:color .15s;color:' +
             (s.page === t2.id ? 'var(--accent)' : 'var(--fg3)')
         };
       })
@@ -1311,9 +1343,9 @@ function screenStats(v) {
         })
       ),
 
-      h('div', { style: 'margin-top:14px;padding:16px 18px;border:1px solid var(--line);border-radius:var(--r);background:color-mix(in oklab, var(--accent) 8%, transparent)' },
+      v.statsNote ? h('div', { style: 'margin-top:14px;padding:16px 18px;border:1px solid var(--line);border-radius:var(--r);background:color-mix(in oklab, var(--accent) 8%, transparent)' },
         h('div', { style: 'font-size:14.5px;line-height:1.5;color:var(--fg)' }, v.statsNote)
-      )
+      ) : null
     )
   );
 }
@@ -1324,6 +1356,12 @@ function screenSettings(v) {
       h('div', { style: 'font-family:var(--fn);font-size:32px;font-weight:600;line-height:1;letter-spacing:-.01em' }, 'Settings')
     ),
     h('div', { style: 'flex:1;min-height:0;overflow-y:auto;padding:0 20px 28px' },
+
+      /* Only worth saying before the app is installed, which is the one moment
+         it can still be acted on. */
+      v.preInstall ? h('div', { key: 'pre', style: 'margin-top:14px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--r);background:color-mix(in oklab, var(--accent) 8%, transparent);font-size:13.5px;color:var(--fg2);line-height:1.55' },
+        'Set your theme, visual style and app icon before adding ' + APP_NAME + ' to your Home Screen — they carry across to the installed app, and the icon cannot be changed afterwards without re-adding it.'
+      ) : null,
 
       h('div', { style: 'font-family:var(--fm);font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--fg3);padding:14px 2px 9px' }, 'Appearance'),
       h('div', { style: CARD },
@@ -1374,8 +1412,6 @@ function screenSettings(v) {
             h('div', { style: 'width:100%;height:100%;border-radius:16px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--fn);font-size:45px;font-weight:700;color:var(--accent-ink);line-height:1' }, '60')
           )
         ),
-        h('div', { style: 'font-size:13px;color:var(--fg3);margin-top:14px;line-height:1.5' },
-          'Sets the icon used when you add ' + APP_NAME + ' to your Home Screen. iOS locks the icon in at install time — re-add the app to change an existing one.')
       ),
 
       h('div', { style: SECT }, 'Reminders'),
@@ -1494,7 +1530,7 @@ function view(v) {
        rather than subtracting a fixed amount keeps it sane wherever the inset
        is different — an Android gesture bar, or 0 in a desktop browser, where
        the 8px floor takes over. */
-    h('div', { style: 'display:flex;border-top:1px solid var(--line);background:var(--surf);padding:7px 8px max(calc(env(safe-area-inset-bottom) * 0.6), 8px)' },
+    h('div', { style: 'display:flex;border-top:1px solid var(--line);background:var(--surf);padding:9px 8px calc(env(safe-area-inset-bottom) + 9px)' },
       v.tabs.map(function (t) {
         return h('button', { onClick: t.pick, style: t.st },
           h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', style: 'width:22px;height:22px;display:block' },
