@@ -95,7 +95,7 @@ function patchKids(dom, oldK, newK, isSvg) {
 
 var STORE_KEY = 'wt.minute.v1';
 var APP_NAME = 'One Minute';
-var APP_VERSION = '1.2.0';
+var APP_VERSION = '1.3.0';
 
 var EXS = [
   { id: 'push', label: 'Push-ups', short: 'Push', lower: 'push-ups' },
@@ -192,6 +192,20 @@ function lum(hex) {
 }
 
 function startOfToday() { var d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
+
+/* Measure what a CSS length actually resolves to on this device. env() values
+   cannot be read from JS any other way, and guessing at them is how the tab
+   bar spacing got misdiagnosed twice. */
+function resolvePx(cssLength) {
+  try {
+    var p = document.createElement('div');
+    p.style.cssText = 'position:fixed;left:0;bottom:0;width:0;visibility:hidden;pointer-events:none;padding-bottom:' + cssLength;
+    document.body.appendChild(p);
+    var v = Math.round(parseFloat(getComputedStyle(p).paddingBottom) || 0);
+    p.parentNode.removeChild(p);
+    return v;
+  } catch (e) { return -1; }
+}
 
 function isStandalone() {
   return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
@@ -1100,6 +1114,13 @@ var app = {
       canInstall: s.canInstall, install: this.install,
       showAddHint: isIOS() && !isStandalone(),
       footer: APP_NAME + ' · v' + APP_VERSION + (isStandalone() ? ' · installed' : ' · add to home screen'),
+      /* Temporary readout so the bottom-bar spacing can be diagnosed from the
+         actual device rather than guessed at. Remove once it is settled. */
+      metrics: 'inset ' + resolvePx('env(safe-area-inset-bottom)') +
+        ' · pad ' + resolvePx('max(env(safe-area-inset-bottom) - 8px, 9px)') +
+        ' · vh ' + window.innerHeight +
+        ' · dvh ' + resolvePx('100dvh') +
+        ' · screen ' + (window.screen ? window.screen.height : 0),
 
       ico0: function () { app.set({ icon: 0 }); }, ico1: function () { app.set({ icon: 1 }); },
       ico2: function () { app.set({ icon: 2 }); }, ico3: function () { app.set({ icon: 3 }); },
@@ -1465,7 +1486,8 @@ function screenSettings(v) {
               'Tap the Share button in Safari, then ', h('span', { style: 'color:var(--fg2)' }, 'Add to Home Screen'), '. ' + APP_NAME + ' then runs full screen, works offline, and can send reminders.')
       ) : null,
 
-      h('div', { style: 'text-align:center;font-family:var(--fm);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg3);padding:26px 0 6px' }, v.footer)
+      h('div', { style: 'text-align:center;font-family:var(--fm);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg3);padding:26px 0 6px' }, v.footer),
+      h('div', { style: 'text-align:center;font-family:var(--fm);font-size:10.5px;letter-spacing:.06em;color:var(--fg3);opacity:.75;padding:0 0 6px' }, v.metrics)
     )
   );
 }
