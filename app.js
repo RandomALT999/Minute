@@ -95,7 +95,7 @@ function patchKids(dom, oldK, newK, isSvg) {
 
 var STORE_KEY = 'wt.minute.v1';
 var APP_NAME = 'One Minute';
-var APP_VERSION = '2.0.0';
+var APP_VERSION = '2.1.0';
 
 var EXS = [
   { id: 'push', label: 'Push-ups', short: 'Push', lower: 'push-ups' },
@@ -267,8 +267,9 @@ var app = {
     notif: false,
     notifMode: 'interval',
     interval: 4,
-    times: ['07:00', '13:00', '20:00'],
+    times: [],
     lastNotif: 0,
+    lookSig: null,
     dH: 6, dM: 6, dP: 0,
     logged: [],
     phase: 'idle',
@@ -305,14 +306,10 @@ var app = {
   /* ---------------------------------------------------------- lifecycle - */
 
   mount: function () {
+    var look = lookFromQuery();
+    var lookSig = look ? JSON.stringify(look) : null;
     try {
       var raw = localStorage.getItem(STORE_KEY);
-      /* Nothing stored means a first launch — most likely straight off an
-         install, so take the look from the URL the installer captured. */
-      if (!raw) {
-        var look = lookFromQuery();
-        if (look) this.setState(look);
-      }
       if (raw) {
         var d = JSON.parse(raw);
         this.setState(function (s) {
@@ -323,9 +320,20 @@ var app = {
             notif: !!d.notif, notifMode: d.notifMode || s.notifMode,
             interval: d.interval || s.interval,
             times: Array.isArray(d.times) ? d.times : s.times,
-            lastNotif: d.lastNotif || 0
+            lastNotif: d.lastNotif || 0,
+            lookSig: d.lookSig || null
           };
         });
+      }
+      /* Adopt the look the installer captured whenever it is one this copy has
+         not seen before — a first launch, or a re-install made with different
+         choices. Keying off "nothing stored" is not enough: iOS does not
+         reliably clear an app's storage when its icon is deleted, so a re-add
+         would silently keep the old look. Settings changed inside the app
+         still stick, because the URL does not move once installed. */
+      if (look && this.state.lookSig !== lookSig) {
+        this.setState(look);
+        this.setState({ lookSig: lookSig });
       }
     } catch (e) {}
 
@@ -358,7 +366,7 @@ var app = {
       localStorage.setItem(STORE_KEY, JSON.stringify({
         logged: s.logged, ex: s.ex, accent: s.accent, mode: s.mode, theme: s.theme,
         icon: s.icon, notif: s.notif, notifMode: s.notifMode, interval: s.interval,
-        times: s.times, lastNotif: s.lastNotif
+        times: s.times, lastNotif: s.lastNotif, lookSig: s.lookSig
       }));
     } catch (e) {}
     /* Any settings change is a reason to re-send prefs to the push server. */
@@ -1096,7 +1104,7 @@ var app = {
       }),
       notifInterval: s.notifMode === 'interval', notifScheduled: s.notifMode === 'scheduled',
       intervalLabel: s.interval + ' hours',
-      intervals: [2, 3, 4, 6, 8].map(function (hr) {
+      intervals: [2, 4, 6, 8, 10].map(function (hr) {
         return { label: hr + 'h', pick: function () { app.set({ interval: hr }); }, st: self.chip(hr === s.interval) };
       }),
       times: s.times.slice().sort().map(function (tm) {
@@ -1462,12 +1470,16 @@ function screenSettings(v) {
           ) : null,
           v.notifScheduled ? h('div', { key: 'sc', style: 'padding:15px 16px' },
             h('div', { style: 'font-size:15px;margin-bottom:12px' }, 'At these times'),
-            h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center' },
-              v.times.map(function (t) {
-                return h('button', { onClick: t.remove, style: t.st }, t.label, h('span', { style: 'color:var(--fg3);margin-left:7px' }, '×'));
-              })
-            ),
-            h('div', { style: 'font-size:13px;color:var(--fg3);margin-top:10px' }, 'Tap a time to remove it.'),
+            v.times.length
+              ? h('div', { key: 'chips', style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center' },
+                  v.times.map(function (t) {
+                    return h('button', { onClick: t.remove, style: t.st }, t.label, h('span', { style: 'color:var(--fg3);margin-left:7px' }, '×'));
+                  })
+                )
+              : h('div', { key: 'none', style: 'font-size:13.5px;color:var(--fg3);line-height:1.5' }, 'No times set. Pick one below and add it.'),
+            v.times.length
+              ? h('div', { key: 'hint', style: 'font-size:13px;color:var(--fg3);margin-top:10px' }, 'Tap a time to remove it.')
+              : null,
             h('div', { style: 'position:relative;margin-top:14px;border:1px solid var(--line);border-radius:var(--rb);overflow:hidden' },
               h('div', { style: 'position:absolute;left:10px;right:10px;top:44px;height:44px;border-radius:10px;background:var(--surf2);pointer-events:none' }),
               h('div', { style: 'position:relative;display:flex;height:132px;-webkit-mask-image:linear-gradient(180deg,transparent,#000 26%,#000 74%,transparent);mask-image:linear-gradient(180deg,transparent,#000 26%,#000 74%,transparent)' },
