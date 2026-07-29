@@ -95,7 +95,7 @@ function patchKids(dom, oldK, newK, isSvg) {
 
 var STORE_KEY = 'wt.minute.v1';
 var APP_NAME = 'One Minute';
-var APP_VERSION = '1.4.0';
+var APP_VERSION = '1.5.0';
 
 var EXS = [
   { id: 'push', label: 'Push-ups', short: 'Push', lower: 'push-ups' },
@@ -1116,11 +1116,22 @@ var app = {
       footer: APP_NAME + ' · v' + APP_VERSION + (isStandalone() ? ' · installed' : ' · add to home screen'),
       /* Temporary readout so the bottom-bar spacing can be diagnosed from the
          actual device rather than guessed at. Remove once it is settled. */
-      metrics: 'inset ' + resolvePx('env(safe-area-inset-bottom)') +
-        ' · pad ' + resolvePx('max(calc(env(safe-area-inset-bottom) * 0.6), 8px)') +
-        ' · vh ' + window.innerHeight +
-        ' · dvh ' + resolvePx('100dvh') +
-        ' · screen ' + (window.screen ? window.screen.height : 0),
+      /* The decisive numbers. barGap is the space between the bottom of the tab
+         bar and the bottom of the viewport — if that is 0, the blank strip is
+         outside the page entirely and no CSS can reach it. vpGap is how much
+         screen the viewport does not occupy. */
+      metrics: (function () {
+        var vh = window.innerHeight;
+        var barBottom = app._barEl ? Math.round(app._barEl.getBoundingClientRect().bottom) : -1;
+        var vv = window.visualViewport;
+        return 'barGap ' + (barBottom < 0 ? '?' : vh - barBottom) +
+          ' · vpGap ' + ((window.screen ? window.screen.height : 0) - vh) +
+          ' · top ' + resolvePx('env(safe-area-inset-top)') +
+          ' · bot ' + resolvePx('env(safe-area-inset-bottom)') +
+          ' · pad ' + resolvePx('max(calc(env(safe-area-inset-bottom) * 0.6), 8px)') +
+          ' · vh ' + vh + ' · vv ' + (vv ? Math.round(vv.height) : 0) +
+          ' · scr ' + (window.screen ? window.screen.height : 0);
+      })(),
 
       ico0: function () { app.set({ icon: 0 }); }, ico1: function () { app.set({ icon: 1 }); },
       ico2: function () { app.set({ icon: 2 }); }, ico3: function () { app.set({ icon: 3 }); },
@@ -1509,7 +1520,7 @@ function view(v) {
        rather than subtracting a fixed amount keeps it sane wherever the inset
        is different — an Android gesture bar, or 0 in a desktop browser, where
        the 8px floor takes over. */
-    h('div', { style: 'display:flex;border-top:1px solid var(--line);background:var(--surf);padding:7px 8px max(calc(env(safe-area-inset-bottom) * 0.6), 8px)' },
+    h('div', { ref: function (el) { app._barEl = el; }, style: 'display:flex;border-top:1px solid var(--line);background:var(--surf);padding:7px 8px max(calc(env(safe-area-inset-bottom) * 0.6), 8px)' },
       v.tabs.map(function (t) {
         return h('button', { onClick: t.pick, style: t.st },
           h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', style: 'width:22px;height:22px;display:block' },
