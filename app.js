@@ -95,7 +95,7 @@ function patchKids(dom, oldK, newK, isSvg) {
 
 var STORE_KEY = 'wt.minute.v1';
 var APP_NAME = 'One Minute';
-var APP_VERSION = '1.7.0';
+var APP_VERSION = '1.8.0';
 
 var EXS = [
   { id: 'push', label: 'Push-ups', short: 'Push', lower: 'push-ups' },
@@ -193,19 +193,6 @@ function lum(hex) {
 
 function startOfToday() { var d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
 
-/* Measure what a CSS length actually resolves to on this device. env() values
-   cannot be read from JS any other way, and guessing at them is how the tab
-   bar spacing got misdiagnosed twice. */
-function resolvePx(cssLength) {
-  try {
-    var p = document.createElement('div');
-    p.style.cssText = 'position:fixed;left:0;bottom:0;width:0;visibility:hidden;pointer-events:none;padding-bottom:' + cssLength;
-    document.body.appendChild(p);
-    var v = Math.round(parseFloat(getComputedStyle(p).paddingBottom) || 0);
-    p.parentNode.removeChild(p);
-    return v;
-  } catch (e) { return -1; }
-}
 
 function isStandalone() {
   return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
@@ -1120,22 +1107,6 @@ var app = {
       footer: APP_NAME + ' · v' + APP_VERSION + (isStandalone() ? ' · installed' : ' · add to home screen'),
       /* Temporary readout so the bottom-bar spacing can be diagnosed from the
          actual device rather than guessed at. Remove once it is settled. */
-      /* The decisive numbers. barGap is the space between the bottom of the tab
-         bar and the bottom of the viewport — if that is 0, the blank strip is
-         outside the page entirely and no CSS can reach it. vpGap is how much
-         screen the viewport does not occupy. */
-      metrics: (function () {
-        var vh = window.innerHeight;
-        var barBottom = app._barEl ? Math.round(app._barEl.getBoundingClientRect().bottom) : -1;
-        var vv = window.visualViewport;
-        return 'barGap ' + (barBottom < 0 ? '?' : vh - barBottom) +
-          ' · vpGap ' + ((window.screen ? window.screen.height : 0) - vh) +
-          ' · top ' + resolvePx('env(safe-area-inset-top)') +
-          ' · bot ' + resolvePx('env(safe-area-inset-bottom)') +
-          ' · pad ' + resolvePx('max(calc(env(safe-area-inset-bottom) * 0.6), 8px)') +
-          ' · vh ' + vh + ' · vv ' + (vv ? Math.round(vv.height) : 0) +
-          ' · scr ' + (window.screen ? window.screen.height : 0);
-      })(),
 
       ico0: function () { app.set({ icon: 0 }); }, ico1: function () { app.set({ icon: 1 }); },
       ico2: function () { app.set({ icon: 2 }); }, ico3: function () { app.set({ icon: 3 }); },
@@ -1501,8 +1472,7 @@ function screenSettings(v) {
               'Tap the Share button in Safari, then ', h('span', { style: 'color:var(--fg2)' }, 'Add to Home Screen'), '. ' + APP_NAME + ' then runs full screen, works offline, and can send reminders.')
       ) : null,
 
-      h('div', { style: 'text-align:center;font-family:var(--fm);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg3);padding:26px 0 6px' }, v.footer),
-      h('div', { style: 'text-align:center;font-family:var(--fm);font-size:10.5px;letter-spacing:.06em;color:var(--fg3);opacity:.75;padding:0 0 6px' }, v.metrics)
+      h('div', { style: 'text-align:center;font-family:var(--fm);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg3);padding:26px 0 6px' }, v.footer)
     )
   );
 }
@@ -1524,7 +1494,7 @@ function view(v) {
        rather than subtracting a fixed amount keeps it sane wherever the inset
        is different — an Android gesture bar, or 0 in a desktop browser, where
        the 8px floor takes over. */
-    h('div', { ref: function (el) { app._barEl = el; }, style: 'display:flex;border-top:1px solid var(--line);background:var(--surf);padding:7px 8px max(calc(env(safe-area-inset-bottom) * 0.6), 8px)' },
+    h('div', { style: 'display:flex;border-top:1px solid var(--line);background:var(--surf);padding:7px 8px max(calc(env(safe-area-inset-bottom) * 0.6), 8px)' },
       v.tabs.map(function (t) {
         return h('button', { onClick: t.pick, style: t.st },
           h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', style: 'width:22px;height:22px;display:block' },
