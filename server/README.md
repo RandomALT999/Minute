@@ -16,6 +16,8 @@ phone ──subscribe──► Worker ──► KV
                        └──web-push, VAPID-signed──► Apple/Google ──► phone
 ```
 
+**Live at** `https://one-minute-push.randomalt99990.workers.dev`
+
 ## Deploy
 
 From this directory. It needs a free Cloudflare account and nothing else — no
@@ -40,17 +42,19 @@ Generate a keypair with `node ../../scripts/gen-vapid.js` if you ever need a new
 one. The public half goes in `config.js` **and** `wrangler.toml`; the private
 half goes only into `wrangler secret put`, never into a file.
 
+On Windows, PowerShell blocks the `npx.ps1` shim by default — use `npx.cmd`.
+
 ## Check it
 
 ```bash
-curl https://one-minute-push.<your-subdomain>.workers.dev/health
+curl https://one-minute-push.randomalt99990.workers.dev/health
 ```
 
-`{"ok":true,"devices":1}` once a phone has registered. To make a device buzz on
-demand:
+`{"ok":true,"devices":1}` once a phone has registered. To make every registered
+device buzz on demand:
 
 ```bash
-curl -X POST "https://one-minute-push.<subdomain>.workers.dev/test?key=<VAPID_PUBLIC_KEY>"
+curl -X POST "https://one-minute-push.randomalt99990.workers.dev/test?key=<VAPID_PUBLIC_KEY>"
 ```
 
 Live cron logs: `npx wrangler tail`.
@@ -81,9 +85,9 @@ Dead subscriptions (`404`/`410`) are pruned automatically.
 
 It is Node-only and cannot run on Workers, so `push.js` implements the same
 protocol — RFC 8291 `aes128gcm` payload encryption and RFC 8292 VAPID — against
-Web Crypto. It is checked against the reference implementation: the tests
-decrypt `web-push`'s own ciphertext with our code and verify our VAPID JWTs
-against the public key.
+Web Crypto. It is checked against the reference implementation rather than
+trusted: the tests decrypt `web-push`'s own ciphertext with our code, match its
+body framing byte for byte, and verify our VAPID JWTs against the public key.
 
 ## Files
 

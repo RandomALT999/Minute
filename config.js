@@ -13,6 +13,6 @@
  * See server/README.md.
  */
 window.MINUTE_PUSH = {
-  endpoint: '',
+  endpoint: 'https://one-minute-push.randomalt99990.workers.dev',
   vapidPublicKey: 'BJz8I3_sqznkD4t97QnLmYgaZtMWnsiqC2wQ_nZNHSTRaSmijHvRRvgk66ttKBBZC9gf81MTxTlS-RQ0fwnisxY'
 };
