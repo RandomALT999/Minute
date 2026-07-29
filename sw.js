@@ -1,7 +1,7 @@
 /* One Minute service worker — app shell precache, offline-first statics,
    and the push/notification handlers the app needs on iOS. */
 
-var VERSION = 'v1.9.0';
+var VERSION = 'v2.0.0';
 var SHELL_CACHE = 'minute-shell-' + VERSION;
 var ASSET_CACHE = 'minute-assets-' + VERSION;
 var FONT_CACHE = 'minute-fonts';
@@ -18,6 +18,11 @@ var SHELL = [
 ];
 
 self.addEventListener('install', function (e) {
+  /* Activate without waiting for open tabs to close. Waiting deadlocks: a new
+     worker sits idle while the old one keeps serving stale code, and the page
+     running that stale code is too old to know it should post skip-waiting.
+     A worker that frees itself is the only way out for a client already stuck. */
+  self.skipWaiting();
   e.waitUntil(
     caches.open(SHELL_CACHE)
       .then(function (c) { return c.addAll(SHELL); })

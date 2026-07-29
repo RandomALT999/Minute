@@ -95,7 +95,7 @@ function patchKids(dom, oldK, newK, isSvg) {
 
 var STORE_KEY = 'wt.minute.v1';
 var APP_NAME = 'One Minute';
-var APP_VERSION = '1.9.0';
+var APP_VERSION = '2.0.0';
 
 var EXS = [
   { id: 'push', label: 'Push-ups', short: 'Push', lower: 'push-ups' },
@@ -1618,6 +1618,9 @@ function registerSW() {
   if (!('serviceWorker' in navigator)) return;
   navigator.serviceWorker.register('./sw.js').then(function (reg) {
     app.swReg = reg;
+    /* Ask for a worker update on every launch. Without this the browser may
+       sit on a cached sw.js and keep serving whatever it shipped with. */
+    if (reg.update) { try { reg.update(); } catch (e) {} }
     /* Re-assert the subscription each launch: browsers rotate endpoints. */
     if (PUSH_ON && app.state.notif && HAS_NOTIF && Notification.permission === 'granted') app.subscribePush();
     /* Take a new worker live at once rather than waiting for every window to
