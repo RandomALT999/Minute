@@ -10,6 +10,16 @@ import { sendPush } from './push.js';
 const KEY = 'devices';
 const MAX_DEVICES = 25;
 
+/* Secrets picked up from a pipe or a paste routinely carry a trailing newline,
+   and base64url has no room for one — it lands as "invalid private key
+   component" at import time. Trim on the way in rather than trusting how the
+   value was entered. */
+const vapidFrom = (env) => ({
+  subject: String(env.VAPID_SUBJECT || '').trim(),
+  publicKey: String(env.VAPID_PUBLIC_KEY || '').trim(),
+  privateKey: String(env.VAPID_PRIVATE_KEY || '').trim()
+});
+
 /* ------------------------------------------------------------ timezone -- */
 
 /* Offset between UTC and `tz` at this instant, via Intl — no tz database
@@ -125,7 +135,21 @@ export default {
 
     if (url.pathname === '/health') {
       const devices = await load(env);
-      return json(env, { ok: true, devices: Object.keys(devices).length, now: new Date().toISOString() });
+      const v = vapidFrom(env);
+      return json(env, {
+        ok: true,
+        devices: Object.keys(devices).length,
+        now: new Date().toISOString(),
+        /* Shape only — never the value. A VAPID private key is 43 base64url
+           chars; anything else is why signing fails. */
+        vapid: {
+          privLen: v.privateKey.length,
+          privClean: /^[A-Za-z0-9_-]+$/.test(v.privateKey),
+          pubLen: v.publicKey.length,
+          pubClean: /^[A-Za-z0-9_-]+$/.test(v.publicKey),
+          subjectSet: !!v.subject
+        }
+      });
     }
 
     if (url.pathname === '/subscribe' && request.method === 'POST') {
@@ -160,11 +184,9 @@ export default {
     /* Send to every registered device right now, ignoring the schedule.
        Guarded by the VAPID public key so it is not an open spam relay. */
     if (url.pathname === '/test' && request.method === 'POST') {
-      if (url.searchParams.get('key') !== env.VAPID_PUBLIC_KEY) return json(env, { error: 'nope' }, 403);
+      const vapid = vapidFrom(env);
+      if (url.searchParams.get('key') !== vapid.publicKey) return json(env, { error: 'nope' }, 403);
       const devices = await load(env);
-      const vapid = {
-        subject: env.VAPID_SUBJECT, publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY
-      };
       const results = [];
       for (const [id, dev] of Object.entries(devices)) {
         const r = await sendPush(dev.subscription, JSON.stringify({
@@ -182,9 +204,7 @@ export default {
     ctx.waitUntil((async () => {
       const devices = await load(env);
       const now = new Date(event.scheduledTime || Date.now());
-      const vapid = {
-        subject: env.VAPID_SUBJECT, publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY
-      };
+      const vapid = vapidFrom(env);
 
       let dirty = false;
 
