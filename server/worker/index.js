@@ -193,7 +193,9 @@ export default {
       const results = [];
       for (const [id, dev] of Object.entries(devices)) {
         const r = await sendPush(dev.subscription, JSON.stringify({
-          message: 'Test nudge — your reminders are working.', icon: dev.prefs?.icon || 0
+          message: 'Test nudge — your reminders are working.',
+          body: 'Test nudge — your reminders are working.',
+          icon: dev.prefs?.icon || 0
         }), vapid);
         results.push({ id, status: r.status, ok: r.ok });
       }
@@ -215,9 +217,12 @@ export default {
         const slot = dueAt(dev, now);
         if (!slot) continue;
 
+        /* `body` carries the same line as `message` so a service worker that
+           has not updated yet still renders the right words. */
+        const line = nudge();
         const res = await sendPush(
           dev.subscription,
-          JSON.stringify({ message: nudge(), icon: dev.prefs?.icon || 0 }),
+          JSON.stringify({ message: line, body: line, icon: dev.prefs?.icon || 0 }),
           vapid
         );
 

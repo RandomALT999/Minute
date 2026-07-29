@@ -1576,16 +1576,22 @@ function registerSW() {
     app.swReg = reg;
     /* Re-assert the subscription each launch: browsers rotate endpoints. */
     if (PUSH_ON && app.state.notif && HAS_NOTIF && Notification.permission === 'granted') app.subscribePush();
-    reg.addEventListener('updatefound', function () {
-      var sw = reg.installing;
+    /* Take a new worker live at once rather than waiting for every window to
+       close. Notifications are rendered by the service worker, so a stale one
+       keeps showing the old wording however many times the app is reopened. */
+    var adopt = function (sw) {
       if (!sw) return;
       sw.addEventListener('statechange', function () {
         if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+          sw.postMessage({ type: 'skip-waiting' });
           app.setState({ updateReady: true });
-          app.toastMsg('Update ready — reopen ' + APP_NAME + ' to apply.');
+          app.toastMsg('Updated to the latest version.');
         }
       });
-    });
+    };
+    if (reg.waiting) reg.waiting.postMessage({ type: 'skip-waiting' });
+    adopt(reg.installing);
+    reg.addEventListener('updatefound', function () { adopt(reg.installing); });
   }).catch(function () {});
 
   navigator.serviceWorker.addEventListener('message', function (e) {
