@@ -95,7 +95,7 @@ function patchKids(dom, oldK, newK, isSvg) {
 
 var STORE_KEY = 'wt.minute.v1';
 var APP_NAME = 'One Minute';
-var APP_VERSION = '1.5.0';
+var APP_VERSION = '1.6.0';
 
 var EXS = [
   { id: 'push', label: 'Push-ups', short: 'Push', lower: 'push-ups' },
@@ -359,6 +359,10 @@ var app = {
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', p.bg);
     document.body.style.background = p.bg;
+    /* The canvas propagates from html and paints beyond the viewport, which is
+       where an installed iOS app leaves a strip under the home indicator. Tab
+       bar colour there makes it read as part of the bar. */
+    document.documentElement.style.background = p.surf;
   },
 
   applyIcon: function () {

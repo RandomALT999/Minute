@@ -23,7 +23,12 @@
 <style>
 :root{--bg:#0A0A0B;--surf:#141416;--surf2:#1E1E21;--line:rgba(255,255,255,0.09);--fg:#F7F7F5;--fg2:rgba(247,247,245,0.60);--fg3:rgba(247,247,245,0.56);--accent:#FF7A29;--accent-ink:#170A00;--r:20px;--rb:16px;--rp:999px;--fu:'Barlow',-apple-system,system-ui,sans-serif;--fn:'Barlow Condensed','Barlow',sans-serif;--fm:'IBM Plex Mono',ui-monospace,monospace}
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;height:100%;overscroll-behavior:none;background:var(--bg)}
+/* html paints the canvas — including any area an installed web app does not
+   give the viewport, such as the strip under the home indicator on iOS. It is
+   set to the tab bar colour so that strip reads as part of the bar rather than
+   as dead space. body keeps the app background. */
+html{margin:0;padding:0;height:100%;overscroll-behavior:none;background:var(--surf)}
+body{margin:0;padding:0;height:100%;overscroll-behavior:none;background:var(--bg)}
 body{font-family:var(--fu);color:var(--fg);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 a{color:var(--accent);text-decoration:none}
