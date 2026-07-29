@@ -95,7 +95,7 @@ function patchKids(dom, oldK, newK, isSvg) {
 
 var STORE_KEY = 'wt.minute.v1';
 var APP_NAME = 'One Minute';
-var APP_VERSION = '1.3.0';
+var APP_VERSION = '1.4.0';
 
 var EXS = [
   { id: 'push', label: 'Push-ups', short: 'Push', lower: 'push-ups' },
@@ -1117,7 +1117,7 @@ var app = {
       /* Temporary readout so the bottom-bar spacing can be diagnosed from the
          actual device rather than guessed at. Remove once it is settled. */
       metrics: 'inset ' + resolvePx('env(safe-area-inset-bottom)') +
-        ' · pad ' + resolvePx('max(env(safe-area-inset-bottom) - 8px, 9px)') +
+        ' · pad ' + resolvePx('max(calc(env(safe-area-inset-bottom) * 0.6), 8px)') +
         ' · vh ' + window.innerHeight +
         ' · dvh ' + resolvePx('100dvh') +
         ' · screen ' + (window.screen ? window.screen.height : 0),
@@ -1142,7 +1142,7 @@ var app = {
         return {
           label: t2.label, d: t2.d,
           pick: function () { app.setState({ page: t2.id, selSet: null }); },
-          st: 'flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0 3px;transition:color .15s;color:' +
+          st: 'flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 0 2px;transition:color .15s;color:' +
             (s.page === t2.id ? 'var(--accent)' : 'var(--fg3)')
         };
       })
@@ -1503,12 +1503,13 @@ function view(v) {
     v.isStats ? screenStats(v) : null,
     v.isSet ? screenSettings(v) : null,
 
-    /* Bottom padding is max(), not the safe-area inset plus 9px — adding them
-       double-counts and leaves a visible dead strip once installed, where the
-       inset is already ~34px for the home indicator. The -8px trims it closer
-       to the indicator without letting it sit on the labels; in a browser tab
-       the inset is 0 and the 9px floor takes over. */
-    h('div', { style: 'display:flex;border-top:1px solid var(--line);background:var(--surf);padding:9px 8px max(env(safe-area-inset-bottom) - 8px, 9px)' },
+    /* A proportion of the safe-area inset rather than all of it, or the inset
+       plus more. iOS reports 34px for the home indicator, which is generous
+       for a tab bar; 60% clears the indicator without the dead strip. Scaling
+       rather than subtracting a fixed amount keeps it sane wherever the inset
+       is different — an Android gesture bar, or 0 in a desktop browser, where
+       the 8px floor takes over. */
+    h('div', { style: 'display:flex;border-top:1px solid var(--line);background:var(--surf);padding:7px 8px max(calc(env(safe-area-inset-bottom) * 0.6), 8px)' },
       v.tabs.map(function (t) {
         return h('button', { onClick: t.pick, style: t.st },
           h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', style: 'width:22px;height:22px;display:block' },
