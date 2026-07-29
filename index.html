@@ -9,7 +9,13 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="One Minute">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- Not black-translucent. That draws the app under the status bar, but iOS
+     still only hands it a viewport 62px short of the screen, so the app loses
+     exactly that much off the bottom as an unreachable strip. "black" has iOS
+     lay the web view out below the status bar and size it to the remaining
+     screen, so the tab bar sits on the real bottom edge. iOS reads this once,
+     when the app is added to the Home Screen. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#0A0A0B">
 
 <link id="manifest-link" rel="manifest" href="./manifest.webmanifest">
