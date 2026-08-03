@@ -95,7 +95,7 @@ function patchKids(dom, oldK, newK, isSvg) {
 
 var STORE_KEY = 'wt.minute.v1';
 var APP_NAME = 'One Minute';
-var APP_VERSION = '2.2.0';
+var APP_VERSION = '2.2.1';
 
 var EXS = [
   { id: 'push', label: 'Push-ups', short: 'Push', lower: 'push-ups' },
@@ -325,15 +325,27 @@ var app = {
           };
         });
       }
-      /* Adopt the look the installer captured whenever it is one this copy has
-         not seen before — a first launch, or a re-install made with different
-         choices. Keying off "nothing stored" is not enough: iOS does not
-         reliably clear an app's storage when its icon is deleted, so a re-add
-         would silently keep the old look. Settings changed inside the app
-         still stick, because the URL does not move once installed. */
-      if (look && this.state.lookSig !== lookSig) {
-        this.setState(look);
-        this.setState({ lookSig: lookSig });
+      /* Adopt the look the installer captured when it is one this copy has not
+         seen before. Keying off "nothing stored" alone is not enough: iOS does
+         not reliably clear an app's storage when its icon is deleted, so a
+         re-add would silently keep the old look.
+         An existing install updating for the first time has no signature yet.
+         Adopting there would undo whatever the user had already changed in the
+         app, so record the signature and leave their settings alone — only a
+         genuinely new install, or a later re-install made with different
+         choices, actually applies it. */
+      if (look) {
+        var seen = this.state.lookSig;
+        if (seen === null || seen === undefined || seen !== lookSig) {
+          if (seen !== null && seen !== undefined) this.setState(look);
+          else if (!raw) this.setState(look);
+          this.setState({ lookSig: lookSig });
+          /* Write it out here rather than waiting for the next settings
+             change: setState alone is memory-only, so the signature would be
+             recomputed as "unseen" on every launch and a later re-install with
+             different choices would never register as new. */
+          this.persist();
+        }
       }
     } catch (e) {}
 
