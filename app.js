@@ -95,7 +95,7 @@ function patchKids(dom, oldK, newK, isSvg) {
 
 var STORE_KEY = 'wt.minute.v1';
 var APP_NAME = 'One Minute';
-var APP_VERSION = '2.1.0';
+var APP_VERSION = '2.2.0';
 
 var EXS = [
   { id: 'push', label: 'Push-ups', short: 'Push', lower: 'push-ups' },
@@ -341,10 +341,22 @@ var app = {
     this.applyIcon();
 
     this.timer = setInterval(function () { app.tick(); }, 40);
-    this.reminder = setInterval(function () { app.reminderTick(); }, 30000);
+    this.reminder = setInterval(function () { app.dayWatch(); app.reminderTick(); }, 30000);
+    this._day = new Date().toDateString();
 
     document.addEventListener('visibilitychange', function () { app.onVisibility(); });
     window.addEventListener('pageshow', function () { app.onVisibility(); });
+
+    /* A rotation can leave iOS with the page scrolled or sized to the old
+       orientation. Nothing has crashed, but taps land where the layout used to
+       be, which reads as a frozen app. Reset the scroll and redraw. */
+    var onResize = function () {
+      try { window.scrollTo(0, 0); } catch (e) {}
+      schedule();
+    };
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
 
     window.addEventListener('beforeinstallprompt', function (e) {
       e.preventDefault();
@@ -417,6 +429,14 @@ var app = {
     syncLookToUrl(st);
   },
 
+  /* "today" and "yesterday" are rendered once and then sit there. Without a
+     nudge at midnight the last-set label stays stale until something else
+     happens to redraw. */
+  dayWatch: function () {
+    var d = new Date().toDateString();
+    if (this._day !== d) { this._day = d; schedule(); }
+  },
+
   sessions: function () {
     var ex = this.state.ex;
     return this.state.logged.filter(function (s) { return s.ex === ex; }).sort(function (a, b) { return a.ts - b.ts; });
@@ -456,6 +476,7 @@ var app = {
      runAt are absolute, so the correct phase can be recomputed on resume. */
   onVisibility: function () {
     if (document.hidden) return;
+    this.clearNudges();
     var s = this.state;
     if (s.phase === 'count' || s.phase === 'run') {
       this.ac();
@@ -722,8 +743,26 @@ var app = {
     return best;
   },
 
+  /* Clear anything already on screen and treat opening the app as having
+     answered the nudge, so launching it — whether from the icon or from the
+     notification itself — cannot trigger a second one. */
+  clearNudges: function () {
+    if (app.swReg && app.swReg.getNotifications) {
+      app.swReg.getNotifications({ tag: 'minute' }).then(function (list) {
+        list.forEach(function (n) { n.close(); });
+      }).catch(function () {});
+    }
+    if (app.state.notif && Date.now() - (app.state.lastNotif || 0) > 60000) {
+      app.set({ lastNotif: Date.now() });
+    }
+  },
+
   reminderTick: function () {
-    if (this.state.pushLive) return;   /* the server owns delivery */
+    /* Once a push server is configured it owns delivery outright. Leaving the
+       in-app engine running as a backup means a second notification fires the
+       moment the app is opened, because the server's sends are invisible to
+       this device's lastNotif. */
+    if (PUSH_ON || this.state.pushLive) return;
     var at = this.dueAt();
     if (!at) return;
     this.set({ lastNotif: Date.now() });
@@ -860,8 +899,13 @@ var app = {
   fmtDay: function (ts) { var d = new Date(ts); return DAYS[d.getDay()] + ' ' + d.getDate(); },
   fmtShort: function (ts) { var d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate(); },
 
+  /* Calendar days, not elapsed milliseconds. Dividing the gap by 24h means a
+     set logged at 8pm yesterday reads "today" until 8pm tonight; comparing
+     midnights makes it "yesterday" the moment the date rolls over. */
   ago: function (ts) {
-    var d = Math.floor((Date.now() - ts) / 864e5);
+    var a = new Date(ts); a.setHours(0, 0, 0, 0);
+    var b = new Date(); b.setHours(0, 0, 0, 0);
+    var d = Math.round((b.getTime() - a.getTime()) / 864e5);
     if (d <= 0) return 'today';
     if (d === 1) return 'yesterday';
     if (d < 7) return d + 'd ago';
@@ -957,8 +1001,14 @@ var app = {
     var rangeReps = rl.reduce(function (a, x) { return a + x.reps; }, 0);
     var rangeDur = rl.reduce(function (a, x) { return a + x.dur; }, 0);
     var avg = function (arr) { return arr.length ? Math.round(arr.reduce(function (a, b) { return a + b.reps; }, 0) / arr.length) : 0; };
-    var first3 = avg(rl.slice(0, 3)), last3 = avg(rl.slice(-3));
-    var gain = last3 - first3;
+    /* Compare the opening sets against the most recent ones, with a window
+       that grows as the log does: one set each side up to 3 logged, two up to
+       5, three from 6 on. Sized so the two windows never overlap — a fixed
+       window of 3 has them sharing sets below 6, which made "then" and "now"
+       come out identical at 2 and 3 sets. */
+    var win = rl.length >= 6 ? 3 : rl.length >= 4 ? 2 : 1;
+    var thenAvg = avg(rl.slice(0, win)), nowAvg = avg(rl.slice(-win));
+    var gain = nowAvg - thenAvg;
     var slope = 0;
     if (rl.length > 2) {
       var t0 = rl[0].ts;
@@ -969,8 +1019,10 @@ var app = {
       xs.forEach(function (x, i) { num += (x - mx) * (ys[i] - my); den += (x - mx) * (x - mx); });
       slope = den ? num / den : 0;
     }
-    var perUnit = s.range === 'week' ? 1 : s.range === 'month' ? 7 : 30;
-    var perLabel = s.range === 'week' ? 'per day' : s.range === 'month' ? 'per week' : 'per month';
+    /* The trend rate is quoted in a unit that suits the span being looked at:
+       a per-month figure is meaningless spread over an all-time log. */
+    var perUnit = s.range === 'week' ? 1 : s.range === 'month' ? 7 : s.range === 'year' ? 30 : 365;
+    var perLabel = s.range === 'week' ? 'per day' : s.range === 'month' ? 'per week' : s.range === 'year' ? 'per month' : 'per year';
     var rangeWord = s.range === 'all' ? 'all time' : 'this ' + s.range;
 
     var pts = this.points();
@@ -1046,7 +1098,7 @@ var app = {
       lifetime: lifetime.toLocaleString(),
       rangeDelta: rl.length ? '+' + rangeReps.toLocaleString() + ' ' + rangeWord : 'nothing logged ' + rangeWord,
       statCards: [
-        { k: 'Then → now', v: rl.length > 1 ? first3 + ' → ' + last3 : '—', sub: rl.length > 1 ? (gain >= 0 ? '+' + gain : gain) + ' reps a set' : 'need a few sets' },
+        { k: 'Then → now', v: rl.length > 1 ? thenAvg + ' → ' + nowAvg : '—', sub: rl.length > 1 ? (gain >= 0 ? '+' + gain : gain) + ' reps a set' : 'need a few sets' },
         { k: 'Trend', v: rl.length > 2 ? (slope * perUnit >= 0 ? '+' : '') + (slope * perUnit).toFixed(1) : '—', sub: 'reps ' + perLabel },
         { k: 'Avg pace', v: rangeReps ? (rangeDur / rangeReps).toFixed(1) + 's' : '—', sub: 'per rep, ' + rangeWord },
         { k: 'Sets logged', v: rl.length || '—', sub: rangeWord }
@@ -1056,7 +1108,7 @@ var app = {
       statsNote: rl.length > 2
         ? (gain > 0
           ? 'Up ' + gain + ' reps a set since the start of ' + (s.range === 'all' ? 'your log' : 'the ' + s.range) + '. That progress is all yours — keep going.'
-          : 'Holding steady around ' + last3 + '. Showing up is the hard part, and you’re doing it.')
+          : 'Holding steady around ' + nowAvg + '. Showing up is the hard part, and you’re doing it.')
         : null,
       hasChart: pts.length > 1, noChart: pts.length < 2,
       chartEmpty: rl.length === 1 ? 'One more minute and your trend line starts.' : 'Log two minutes to see your trend.',
@@ -1616,9 +1668,21 @@ function schedule() {
 function render() {
   var tree = view(app.renderVals());
   refQueue.length = 0;
-  if (!rootDom) { rootDom = create(tree, false); rootEl.appendChild(rootDom); }
-  else rootDom = patch(rootEl, rootDom, prevTree, tree, false);
-  prevTree = tree;
+  try {
+    if (!rootDom) { rootDom = create(tree, false); rootEl.appendChild(rootDom); }
+    else rootDom = patch(rootEl, rootDom, prevTree, tree, false);
+    prevTree = tree;
+  } catch (e) {
+    /* A patch that fails part way leaves the vnode tree out of step with the
+       DOM, so every render after it fails too and the app stops responding.
+       Throw the tree away and rebuild rather than staying wedged. */
+    try {
+      while (rootEl.firstChild) rootEl.removeChild(rootEl.firstChild);
+      rootDom = create(tree, false);
+      rootEl.appendChild(rootDom);
+      prevTree = tree;
+    } catch (e2) { return; }
+  }
   for (var i = 0; i < refQueue.length; i++) refQueue[i][0](refQueue[i][1]);
   refQueue.length = 0;
   app.didRender();
@@ -1654,7 +1718,7 @@ function registerSW() {
   }).catch(function () {});
 
   navigator.serviceWorker.addEventListener('message', function (e) {
-    if (e.data && e.data.type === 'open-timer') app.setState({ page: 'home' });
+    if (e.data && e.data.type === 'open-timer') { app.setState({ page: 'home' }); app.clearNudges(); }
   });
 }
 
