@@ -95,7 +95,7 @@ function patchKids(dom, oldK, newK, isSvg) {
 
 var STORE_KEY = 'wt.minute.v1';
 var APP_NAME = 'One Minute';
-var APP_VERSION = '2.2.1';
+var APP_VERSION = '2.3.0';
 
 var EXS = [
   { id: 'push', label: 'Push-ups', short: 'Push', lower: 'push-ups' },
@@ -272,6 +272,7 @@ var app = {
     lookSig: null,
     dH: 6, dM: 6, dP: 0,
     logged: [],
+    rest: [],
     phase: 'idle',
     countVal: 3,
     remaining: 60,
@@ -315,6 +316,7 @@ var app = {
         this.setState(function (s) {
           return {
             logged: Array.isArray(d.logged) ? d.logged : s.logged,
+            rest: Array.isArray(d.rest) ? d.rest : s.rest,
             ex: d.ex || s.ex, accent: d.accent || s.accent, mode: d.mode || s.mode,
             theme: d.theme || s.theme, icon: typeof d.icon === 'number' ? d.icon : s.icon,
             notif: !!d.notif, notifMode: d.notifMode || s.notifMode,
@@ -388,7 +390,7 @@ var app = {
     var s = this.state;
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
-        logged: s.logged, ex: s.ex, accent: s.accent, mode: s.mode, theme: s.theme,
+        logged: s.logged, rest: s.rest, ex: s.ex, accent: s.accent, mode: s.mode, theme: s.theme,
         icon: s.icon, notif: s.notif, notifMode: s.notifMode, interval: s.interval,
         times: s.times, lastNotif: s.lastNotif, lookSig: s.lookSig
       }));
@@ -439,6 +441,51 @@ var app = {
     if (st.theme + '|' + st.mode + '|' + st.accent !== this._sig) this.applyTheme();
     this.applyIcon();
     syncLookToUrl(st);
+  },
+
+  dayKey: function (ts) { return new Date(ts).toDateString(); },
+
+  restedOn: function (key) { return (this.state.rest || []).indexOf(key) >= 0; },
+
+  trainedOn: function (key) {
+    var self = this;
+    return this.state.logged.some(function (x) { return self.dayKey(x.ts) === key; });
+  },
+
+  /* Walks back from today counting consecutive days trained. A rest day
+     bridges the chain without adding to it — the streak survives, but taking
+     the day off does not inflate it. Today missing is tolerated: the day is
+     not over yet.
+     Steps a real date rather than subtracting 24h, which lands on the same
+     day twice across a DST change and would miscount the streak. */
+  streak: function () {
+    var trained = {};
+    this.sessions().forEach(function (x) { trained[new Date(x.ts).toDateString()] = 1; });
+    var d = new Date();
+    d.setHours(12, 0, 0, 0);                 /* noon keeps DST off the boundary */
+    var n = 0;
+    for (var i = 0; i < 400; i++) {
+      var key = d.toDateString();
+      if (trained[key]) n++;
+      else if (!this.restedOn(key) && i > 0) break;
+      d.setDate(d.getDate() - 1);
+    }
+    return n;
+  },
+
+  restDay: function () {
+    var key = app.dayKey(Date.now());
+    if (app.restedOn(key)) {
+      app.set(function (st) {
+        return { rest: st.rest.filter(function (k) { return k !== key; }) };
+      });
+      app.toastMsg('Rest day removed.');
+      return;
+    }
+    if (app.trainedOn(key)) { app.toastMsg('You already logged a minute today.'); return; }
+    app.set(function (st) { return { rest: (st.rest || []).concat([key]) }; });
+    var n = app.streak();
+    app.toastMsg(n ? 'Rest day logged — ' + n + ' day streak safe.' : 'Rest day logged.');
   },
 
   /* "today" and "yesterday" are rendered once and then sit there. Without a
@@ -792,7 +839,8 @@ var app = {
         ex: s.ex, theme: s.theme, mode: s.mode, accent: s.accent, icon: s.icon,
         notif: s.notif, notifMode: s.notifMode, interval: s.interval, times: s.times
       },
-      sets: s.logged
+      sets: s.logged,
+      rest: s.rest || []
     }, null, 2), 'minute-' + stamp() + '.json', 'application/json');
     app.toastMsg('Exported ' + s.logged.length + ' sets.');
   },
@@ -831,7 +879,11 @@ var app = {
           added++;
         });
         merged.sort(function (a, b) { return a.ts - b.ts; });
-        app.set({ logged: merged, scrub: null, logLimit: LOG_PAGE });
+        var rest = (app.state.rest || []).slice();
+        if (Array.isArray(d.rest)) d.rest.forEach(function (k) {
+          if (typeof k === 'string' && rest.indexOf(k) < 0) rest.push(k);
+        });
+        app.set({ logged: merged, rest: rest, scrub: null, logLimit: LOG_PAGE });
         app.toastMsg(added ? 'Imported ' + added + ' new sets.' : 'Nothing new to import.');
       } catch (e) { app.toastMsg("Couldn't read that file."); }
     };
@@ -1043,14 +1095,9 @@ var app = {
     var line = pts.length > 1 ? pts.map(function (p, i) { return (i ? 'L' : 'M') + p.x.toFixed(1) + ' ' + p.y.toFixed(1); }).join(' ') : '';
     var area = pts.length > 1 ? line + ' L314 128 L6 128 Z' : '';
 
-    var dayKeys = {};
-    list.forEach(function (x) { dayKeys[new Date(x.ts).toDateString()] = 1; });
-    var streak = 0;
-    for (var i = 0; i < 400; i++) {
-      var d2 = new Date(Date.now() - i * 864e5);
-      if (dayKeys[d2.toDateString()]) streak++;
-      else if (i > 0) break;
-    }
+    var streak = this.streak();
+    var todayKey = this.dayKey(Date.now());
+    var restedToday = this.restedOn(todayKey);
 
     var reps = parseInt(s.entry, 10) || 0;
     var t = THEMES[s.theme] || THEMES['dark-gym'];
@@ -1097,6 +1144,10 @@ var app = {
       lastReps: last ? last.reps : '—', lastWhen: last ? this.ago(last.ts) : 'no sets yet',
       bestReps: best.reps || '—', bestWhen: best.ts ? this.ago(best.ts) : '—',
       streakLabel: streak + ' day streak',
+      restDay: this.restDay,
+      restLabel: restedToday ? 'Resting today' : 'Rest day',
+      restSt: 'align-self:center;height:38px;padding:0 20px;border-radius:var(--rp);font-size:12.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;font-family:var(--fu);border:1px solid var(--line);background:var(--surf2);color:' +
+        (restedToday ? 'var(--accent)' : 'var(--fg2)'),
 
       logGroups: groups, logEmpty: !list.length,
       logSummary: list.length ? list.length + (list.length === 1 ? ' set · ' : ' sets · ') + lifetime.toLocaleString() + ' reps' : 'No sets yet',
@@ -1201,7 +1252,7 @@ var app = {
           return;
         }
         clearTimeout(app._armT);
-        app.set({ logged: [], scrub: null, selSet: null, clearArm: false, logLimit: LOG_PAGE });
+        app.set({ logged: [], rest: [], scrub: null, selSet: null, clearArm: false, logLimit: LOG_PAGE });
         app.toastMsg('Logged sets erased.');
       },
 
@@ -1277,6 +1328,7 @@ function screenHome(v) {
     ),
 
     h('div', { style: 'display:flex;flex-direction:column;gap:14px;padding-bottom:16px' },
+      v.idle ? h('button', { key: 'rest', onClick: v.restDay, style: v.restSt }, v.restLabel) : null,
       v.idle ? h('button', { key: 'start', onClick: v.start, style: 'height:62px;border-radius:var(--rp);background:var(--accent);color:var(--accent-ink);font-size:16px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-family:var(--fu)' }, 'Start the minute') : null,
       v.running ? h('button', { key: 'cancel', onClick: v.cancel, style: 'height:62px;border-radius:var(--rp);border:1.5px solid var(--line);color:var(--fg2);font-size:16px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;background:var(--surf)' }, 'Cancel') : null,
       h('div', { style: 'display:flex;gap:10px' },
