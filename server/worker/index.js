@@ -41,6 +41,14 @@ function localMinutes(tz, date) {
   return d.getUTCHours() * 60 + d.getUTCMinutes();
 }
 
+/* The device's own calendar date, as YYYY-MM-DD. en-CA formats in that order,
+   which is what the app sends its rest days as. */
+function localDay(tz, date) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(date);
+}
+
 function localMidnight(tz, date) {
   const off = tzOffsetMs(tz, date);
   const d = new Date(date.getTime() + off);
@@ -57,8 +65,11 @@ export function dueAt(device, now) {
   if (!p.enabled) return null;
 
   const tz = p.tz || 'UTC';
-  let mins;
-  try { mins = localMinutes(tz, now); } catch { return null; }
+  let mins, today;
+  try { mins = localMinutes(tz, now); today = localDay(tz, now); } catch { return null; }
+
+  /* A rest day is a day off from being nagged as well. */
+  if ((p.restDays || []).indexOf(today) >= 0) return null;
 
   const lastSent = device.lastSent || 0;
   const lastSet = p.lastSetTs || 0;

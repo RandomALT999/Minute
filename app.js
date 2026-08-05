@@ -95,7 +95,7 @@ function patchKids(dom, oldK, newK, isSvg) {
 
 var STORE_KEY = 'wt.minute.v1';
 var APP_NAME = 'One Minute';
-var APP_VERSION = '2.3.0';
+var APP_VERSION = '2.3.1';
 
 var EXS = [
   { id: 'push', label: 'Push-ups', short: 'Push', lower: 'push-ups' },
@@ -192,6 +192,17 @@ function lum(hex) {
 }
 
 function startOfToday() { var d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
+
+/* Rest days are stored as toDateString() keys, which are local to whatever
+   runtime produced them. The push service runs in UTC, so they travel to it as
+   plain calendar dates it can rebuild from the device's timezone. */
+function isoDay(key) {
+  var d = key instanceof Date ? key : new Date(key);
+  if (isNaN(d.getTime())) return null;
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
+}
 
 /* An installed iOS app gets its own storage, separate from Safari's, so
    choices made in the browser are invisible to it on first launch. iOS does
@@ -661,7 +672,9 @@ var app = {
       tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
       exercise: s.ex,
       icon: s.icon,
-      lastSetTs: this.lastSetTs()
+      lastSetTs: this.lastSetTs(),
+      /* Recent rest days only — the service just needs to recognise today. */
+      restDays: (s.rest || []).slice(-30).map(isoDay).filter(Boolean)
     };
   },
 
@@ -781,6 +794,7 @@ var app = {
   dueAt: function () {
     var s = this.state, now = Date.now();
     if (!s.notif || !HAS_NOTIF || Notification.permission !== 'granted') return 0;
+    if (this.restedOn(this.dayKey(now))) return 0;   /* a rest day is a day off from nagging too */
     if (s.notifMode === 'interval') {
       var step = s.interval * 3600e3;
       var base = Math.max(this.lastSetTs(), s.lastNotif || 0, startOfToday());

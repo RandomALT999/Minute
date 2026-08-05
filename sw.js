@@ -1,7 +1,7 @@
 /* One Minute service worker — app shell precache, offline-first statics,
    and the push/notification handlers the app needs on iOS. */
 
-var VERSION = 'v2.3.0';
+var VERSION = 'v2.3.1';
 var SHELL_CACHE = 'minute-shell-' + VERSION;
 var ASSET_CACHE = 'minute-assets-' + VERSION;
 var FONT_CACHE = 'minute-fonts';
